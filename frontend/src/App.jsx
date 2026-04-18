@@ -1084,10 +1084,12 @@ function LoginPage({ onLogin }) {
 
 // ─── Users Page ───────────────────────────────────────────────────
 function UsersPage() {
-  const [users, setUsers]     = useState([]);
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm]       = useState({username:"",password:"",role:"NOC"});
-  const [search, setSearch]   = useState("");
+  const [users, setUsers]       = useState([]);
+  const [showForm, setShowForm]  = useState(false);
+  const [form, setForm]          = useState({username:"",password:"",role:"NOC"});
+  const [search, setSearch]      = useState("");
+  const [editUser, setEditUser]  = useState(null); // user being edited
+  const [editForm, setEditForm]  = useState({username:"",password:"",role:"NOC"});
 
   useEffect(() => { fetchUsers(); }, []);
   const fetchUsers = async () => { const r = await API.get("/users/"); setUsers(r.data); };
@@ -1097,6 +1099,29 @@ function UsersPage() {
     try {
       await API.post("/users/", form);
       fetchUsers(); setShowForm(false); setForm({username:"",password:"",role:"NOC"});
+    } catch(err) { alert(err.response?.data?.detail||"Error"); }
+  };
+
+  const openEdit = (u) => {
+    setEditUser(u);
+    setEditForm({username: u.username, password: "", role: u.role});
+  };
+
+  const handleEditSubmit = async e => {
+    e.preventDefault();
+    try {
+      const payload = {username: editForm.username, role: editForm.role};
+      if (editForm.password) payload.password = editForm.password;
+      await API.put(`/users/${editUser.id}`, payload);
+      fetchUsers(); setEditUser(null);
+    } catch(err) { alert(err.response?.data?.detail||"Error"); }
+  };
+
+  const handleDelete = async (u) => {
+    if (!window.confirm(`Delete user "${u.username}"? This cannot be undone.`)) return;
+    try {
+      await API.delete(`/users/${u.id}`);
+      fetchUsers();
     } catch(err) { alert(err.response?.data?.detail||"Error"); }
   };
 
@@ -1117,7 +1142,7 @@ function UsersPage() {
           <span className="search-icon">⌕</span>
           <input className="search-input" placeholder="Search users…" value={search} onChange={e=>setSearch(e.target.value)} />
         </div>
-        <button className="btn-add" onClick={()=>setShowForm(!showForm)}>{showForm?"✕ Close":"+ Add User"}</button>
+        <button className="btn-add" onClick={()=>{ setShowForm(!showForm); setEditUser(null); }}>{showForm?"✕ Close":"+ Add User"}</button>
       </div>
 
       {showForm && (
@@ -1130,7 +1155,7 @@ function UsersPage() {
               <div className="field">
                 <label className="flabel">Role</label>
                 <select className="finput" value={form.role} onChange={e=>setForm({...form,role:e.target.value})}>
-                  {["ADMIN","NOC","ACCOUNTS","KAM","PARTNER"].map(r=><option key={r}>{r}</option>)}
+                  {["ADMIN","NOC","ACCOUNTS","KAM","CLIENT"].map(r=><option key={r}>{r}</option>)}
                 </select>
               </div>
             </div>
@@ -1142,19 +1167,54 @@ function UsersPage() {
         </div>
       )}
 
+      {editUser && (
+        <div className="form-box" style={{borderLeft:"3px solid #f59e0b"}}>
+          <div className="form-head"><b>Edit User</b> <span style={{fontWeight:400,color:"var(--color-text-secondary)"}}>— {editUser.username}</span></div>
+          <form onSubmit={handleEditSubmit}>
+            <div className="fg fg-5">
+              <F label="Username" name="username" val={editForm.username} onChange={e=>setEditForm({...editForm,username:e.target.value})} placeholder="username" required />
+              <F label="New Password" name="password" val={editForm.password} onChange={e=>setEditForm({...editForm,password:e.target.value})} placeholder="leave blank to keep" type="password" />
+              <div className="field">
+                <label className="flabel">Role</label>
+                <select className="finput" value={editForm.role} onChange={e=>setEditForm({...editForm,role:e.target.value})}>
+                  {["ADMIN","NOC","ACCOUNTS","KAM","CLIENT"].map(r=><option key={r}>{r}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="factions">
+              <button type="submit" className="btn-save">Save Changes</button>
+              <button type="button" className="btn-discard" onClick={()=>setEditUser(null)}>Cancel</button>
+            </div>
+          </form>
+        </div>
+      )}
+
       <div className="tbl-wrap">
         <div className="tbl-hd"><span className="tbl-title">Users <span className="tbl-cnt">{filtered.length}</span></span></div>
         <div className="tbl-scroll">
           <table>
-            <thead><tr><th>#</th><th>Username</th><th>Role</th></tr></thead>
+            <thead><tr><th>#</th><th>Username</th><th>Role</th><th>Actions</th></tr></thead>
             <tbody>
               {filtered.map((u,i) => {
                 const rs = roleStyle(u.role);
+                const isEditing = editUser?.id === u.id;
                 return (
-                  <tr key={u.id}>
+                  <tr key={u.id} style={isEditing ? {background:"#fffbeb"} : {}}>
                     <td className="num">{i+1}</td>
                     <td className="bold">{u.username}</td>
                     <td><span style={{fontSize:11,fontWeight:700,padding:"2px 10px",borderRadius:20,background:rs.bg,color:rs.color}}>{u.role}</span></td>
+                    <td>
+                      <div style={{display:"flex",gap:6}}>
+                        <button
+                          onClick={()=>{ setShowForm(false); openEdit(u); }}
+                          style={{fontSize:12,padding:"3px 10px",borderRadius:6,border:"1px solid #d1d5db",background:isEditing?"#fef3c7":"#fff",color:"#374151",cursor:"pointer",fontWeight:500}}
+                        >✏️ Edit</button>
+                        <button
+                          onClick={()=>handleDelete(u)}
+                          style={{fontSize:12,padding:"3px 10px",borderRadius:6,border:"1px solid #fca5a5",background:"#fff",color:"#dc2626",cursor:"pointer",fontWeight:500}}
+                        >🗑 Delete</button>
+                      </div>
+                    </td>
                   </tr>
                 );
               })}
