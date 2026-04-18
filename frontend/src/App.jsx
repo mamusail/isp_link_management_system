@@ -154,7 +154,7 @@ function MainApp({ user, onLogout }) {
           </div>
           <div className="content">
             {page==="dashboard" && <Dashboard links={links} pops={pops} setPage={setPage} />}
-            {page==="links"     && <LinksPage  links={links} fetchLinks={fetchLinks} pops={pops} utils={utils} fetchUtils={fetchUtils} requests={requests} fetchRequests={fetchRequests} partners={partners} user={user} hiddenCols={HIDDEN_COLS[role]||[]} />}
+            {page==="links"     && <LinksPage  links={links} fetchLinks={fetchLinks} pops={pops} utils={utils} fetchUtils={fetchUtils} requests={requests} fetchRequests={fetchRequests} partners={partners} user={user} role={role}  hiddenCols={HIDDEN_COLS[role]||[]} />}
             {page==="pops"      && can(role,"managePOPs") && <POPsPage pops={pops} fetchPops={fetchPops} />}
             {page==="requests"       && <RequestsPage requests={requests} links={links} fetchRequests={fetchRequests} fetchLinks={fetchLinks} user={user} />}
             {page==="users"          && can(role,"manageUsers") && <UsersPage />}
@@ -565,7 +565,7 @@ function LinksPage({ links, fetchLinks, pops, utils, fetchUtils, requests, fetch
         </div>
       )}
 
-      {reqModal && <RequestModal link={reqModal} onClose={()=>setReqModal(null)} onSave={async (payload)=>{ await API.post("/requests/", payload); fetchRequests(); setReqModal(null); }} />}
+      {reqModal && <RequestModal link={reqModal}  user={user} onClose={()=>setReqModal(null)} onSave={async (payload)=>{ await API.post("/requests/", payload); fetchRequests(); setReqModal(null); }} />}
 
       {/* UTILIZATION UPDATE MODAL */}
       {utilModal && <UtilModal link={utilModal} onClose={()=>setUtilModal(null)} onSave={async (mbps, by, periodFrom, periodTo) => {
@@ -1035,6 +1035,7 @@ function LoginPage({ onLogin }) {
   const [password, setPassword] = useState("");
   const [error,    setError]    = useState("");
   const [loading,  setLoading]  = useState(false);
+  const [remember, setRemember] = useState(true);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -1049,36 +1050,177 @@ function LoginPage({ onLogin }) {
   };
 
   return (
-    <div style={{minHeight:"100vh",background:"#f1f5f9",display:"flex",alignItems:"center",justifyContent:"center"}}>
-      <div style={{background:"#fff",borderRadius:16,border:"1px solid #e2e8f0",padding:"40px 36px",width:"100%",maxWidth:380,boxShadow:"0 4px 24px rgba(0,0,0,.08)"}}>
-        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:32}}>
-          <div style={{width:42,height:42,background:"linear-gradient(135deg,#6366f1,#8b5cf6)",borderRadius:11,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:18}}>◈</div>
-          <div>
-            <div style={{fontSize:16,fontWeight:700,color:"#0f172a"}}>ISP Panel</div>
-            <div style={{fontSize:12,color:"#94a3b8"}}>Network Operations</div>
+    <>
+      <style>{LOGIN_CSS}</style>
+      <div className="login-page">
+        {/* Animated network background */}
+        <svg
+          className="login-bg"
+          xmlns="http://www.w3.org/2000/svg"
+          preserveAspectRatio="xMidYMid slice"
+          viewBox="0 0 800 540"
+        >
+          <defs>
+            <pattern id="netgrid" width="40" height="40" patternUnits="userSpaceOnUse">
+              <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#6366F1" strokeWidth="0.4" opacity="0.3" />
+            </pattern>
+            <radialGradient id="bgglow1" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stopColor="#6366F1" stopOpacity="0.45" />
+              <stop offset="100%" stopColor="#6366F1" stopOpacity="0" />
+            </radialGradient>
+            <radialGradient id="bgglow2" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stopColor="#22D3EE" stopOpacity="0.35" />
+              <stop offset="100%" stopColor="#22D3EE" stopOpacity="0" />
+            </radialGradient>
+            <radialGradient id="bgglow3" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stopColor="#A78BFA" stopOpacity="0.3" />
+              <stop offset="100%" stopColor="#A78BFA" stopOpacity="0" />
+            </radialGradient>
+          </defs>
+
+          <rect width="100%" height="100%" fill="url(#netgrid)" />
+          <circle cx="120" cy="100" r="200" fill="url(#bgglow1)" />
+          <circle cx="680" cy="440" r="220" fill="url(#bgglow2)" />
+          <circle cx="700" cy="80" r="160" fill="url(#bgglow3)" />
+
+          {/* Network connections */}
+          <g stroke="#6366F1" strokeWidth="0.6" opacity="0.5">
+            <line x1="60"  y1="80"  x2="180" y2="160" />
+            <line x1="180" y1="160" x2="320" y2="90"  />
+            <line x1="320" y1="90"  x2="460" y2="180" />
+            <line x1="460" y1="180" x2="600" y2="120" />
+            <line x1="600" y1="120" x2="730" y2="220" />
+            <line x1="60"  y1="80"  x2="100" y2="280" />
+            <line x1="100" y1="280" x2="260" y2="380" />
+            <line x1="260" y1="380" x2="430" y2="450" />
+            <line x1="430" y1="450" x2="600" y2="390" />
+            <line x1="600" y1="390" x2="730" y2="470" />
+            <line x1="180" y1="160" x2="100" y2="280" />
+            <line x1="320" y1="90"  x2="260" y2="380" />
+            <line x1="460" y1="180" x2="430" y2="450" />
+            <line x1="600" y1="120" x2="600" y2="390" />
+            <line x1="60"  y1="80"  x2="320" y2="90"  />
+            <line x1="730" y1="220" x2="730" y2="470" />
+          </g>
+
+          {/* Static nodes */}
+          <g>
+            <circle cx="60"  cy="80"  r="2.5" fill="#A78BFA" />
+            <circle cx="180" cy="160" r="2.5" fill="#A78BFA" />
+            <circle cx="320" cy="90"  r="2.5" fill="#22D3EE" />
+            <circle cx="460" cy="180" r="2.5" fill="#A78BFA" />
+            <circle cx="600" cy="120" r="2.5" fill="#22D3EE" />
+            <circle cx="730" cy="220" r="2.5" fill="#A78BFA" />
+            <circle cx="100" cy="280" r="2.5" fill="#22D3EE" />
+            <circle cx="260" cy="380" r="2.5" fill="#A78BFA" />
+            <circle cx="430" cy="450" r="2.5" fill="#22D3EE" />
+            <circle cx="600" cy="390" r="2.5" fill="#A78BFA" />
+            <circle cx="730" cy="470" r="2.5" fill="#22D3EE" />
+          </g>
+
+          {/* Pulsing rings */}
+          <circle cx="320" cy="90" r="4" fill="none" stroke="#22D3EE" strokeWidth="1">
+            <animate attributeName="r" values="4;20;4" dur="3s" repeatCount="indefinite" />
+            <animate attributeName="opacity" values="0.8;0;0.8" dur="3s" repeatCount="indefinite" />
+          </circle>
+          <circle cx="430" cy="450" r="4" fill="none" stroke="#22D3EE" strokeWidth="1">
+            <animate attributeName="r" values="4;20;4" dur="3s" begin="1s" repeatCount="indefinite" />
+            <animate attributeName="opacity" values="0.8;0;0.8" dur="3s" begin="1s" repeatCount="indefinite" />
+          </circle>
+          <circle cx="100" cy="280" r="4" fill="none" stroke="#A78BFA" strokeWidth="1">
+            <animate attributeName="r" values="4;20;4" dur="3s" begin="2s" repeatCount="indefinite" />
+            <animate attributeName="opacity" values="0.8;0;0.8" dur="3s" begin="2s" repeatCount="indefinite" />
+          </circle>
+          <circle cx="600" cy="120" r="4" fill="none" stroke="#22D3EE" strokeWidth="1">
+            <animate attributeName="r" values="4;18;4" dur="3.5s" begin="0.5s" repeatCount="indefinite" />
+            <animate attributeName="opacity" values="0.8;0;0.8" dur="3.5s" begin="0.5s" repeatCount="indefinite" />
+          </circle>
+
+          {/* Moving data packets */}
+          <circle r="3" fill="#22D3EE">
+            <animateMotion dur="4s" repeatCount="indefinite" path="M 60 80 L 180 160 L 320 90 L 460 180 L 600 120" />
+          </circle>
+          <circle r="3" fill="#A78BFA">
+            <animateMotion dur="5s" repeatCount="indefinite" path="M 60 80 L 100 280 L 260 380 L 430 450 L 600 390 L 730 470" />
+          </circle>
+          <circle r="2.5" fill="#22D3EE">
+            <animateMotion dur="3.5s" begin="1.5s" repeatCount="indefinite" path="M 180 160 L 320 90 L 460 180" />
+          </circle>
+          <circle r="2.5" fill="#A78BFA">
+            <animateMotion dur="4.5s" begin="2s" repeatCount="indefinite" path="M 260 380 L 430 450 L 600 390 L 730 470" />
+          </circle>
+          <circle r="2.5" fill="#22D3EE">
+            <animateMotion dur="6s" begin="0.8s" repeatCount="indefinite" path="M 60 80 L 320 90 L 600 120 L 730 220" />
+          </circle>
+          <circle r="2.5" fill="#A78BFA">
+            <animateMotion dur="5.5s" begin="2.5s" repeatCount="indefinite" path="M 100 280 L 260 380 L 430 450" />
+          </circle>
+        </svg>
+
+        {/* Center login card */}
+        <div className="login-card">
+          <div className="login-brand">
+            <div className="login-logo">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
+                <path d="M5 12.55a11 11 0 0 1 14.08 0M1.42 9a16 16 0 0 1 21.16 0M8.53 16.11a6 6 0 0 1 6.95 0M12 20h.01" />
+              </svg>
+            </div>
+            <div>
+              <div className="login-brand-title">ISP Panel</div>
+              <div className="login-brand-sub">Network Operations</div>
+            </div>
           </div>
+
+          <h3 className="login-heading">Welcome back</h3>
+          <p className="login-subheading">Sign in to your operator account</p>
+
+          <form onSubmit={handleLogin}>
+            <label className="login-label">USERNAME</label>
+            <input
+              type="text"
+              className="login-input"
+              value={username}
+              onChange={e=>setUsername(e.target.value)}
+              placeholder="your_username"
+              autoComplete="username"
+              autoFocus
+              required
+            />
+
+            <label className="login-label">PASSWORD</label>
+            <input
+              type="password"
+              className="login-input"
+              value={password}
+              onChange={e=>setPassword(e.target.value)}
+              placeholder="••••••••"
+              autoComplete="current-password"
+              required
+            />
+
+            <div className="login-row">
+              <label className="login-remember">
+                <input
+                  type="checkbox"
+                  checked={remember}
+                  onChange={e=>setRemember(e.target.checked)}
+                />
+                Remember me
+              </label>
+              <a href="#" className="login-forgot" onClick={e=>e.preventDefault()}>Forgot?</a>
+            </div>
+
+            {error && <div className="login-error">{error}</div>}
+
+            <button type="submit" disabled={loading} className="login-button">
+              {loading ? "Signing in…" : "Sign in →"}
+            </button>
+          </form>
+
+          <div className="login-footer">SECURED BY ISP PANEL © 2026</div>
         </div>
-
-        <div style={{fontSize:20,fontWeight:700,color:"#0f172a",marginBottom:4}}>Sign in</div>
-        <div style={{fontSize:13,color:"#94a3b8",marginBottom:24}}>Enter your credentials to continue</div>
-
-        <form onSubmit={handleLogin} style={{display:"flex",flexDirection:"column",gap:14}}>
-          <div className="field">
-            <label className="flabel">Username</label>
-            <input className="finput" placeholder="your_username" value={username} onChange={e=>setUsername(e.target.value)} autoFocus required />
-          </div>
-          <div className="field">
-            <label className="flabel">Password</label>
-            <input className="finput" type="password" placeholder="••••••••" value={password} onChange={e=>setPassword(e.target.value)} required />
-          </div>
-          {error && <div style={{fontSize:12,color:"#dc2626",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:7,padding:"8px 12px"}}>{error}</div>}
-          <button type="submit" disabled={loading}
-            style={{marginTop:4,padding:"10px",borderRadius:8,background:"#6366f1",color:"#fff",fontSize:14,fontWeight:600,border:"none",cursor:"pointer",opacity:loading?0.7:1,fontFamily:"inherit"}}>
-            {loading ? "Signing in…" : "Sign in"}
-          </button>
-        </form>
       </div>
-    </div>
+    </>
   );
 }
 
@@ -1445,10 +1587,10 @@ function PartnersPage({ partners, kams, fetchPartners }) {
 }
 
 // ─── Request Modal ────────────────────────────────────────────────
-function RequestModal({ link, onClose, onSave }) {
+function RequestModal({ link, user, onClose, onSave }) {
   const [reqType,  setReqType]  = useState("UPGRADE");
   const [changeMbps, setChangeMbps] = useState("");
-  const [role,     setRole]     = useState("NOC");
+  const role = user?.role || "NOC";
   const [reqBy,    setReqBy]    = useState("");
   const [saving,   setSaving]   = useState(false);
 
@@ -1541,25 +1683,23 @@ function RequestModal({ link, onClose, onSave }) {
           )}
 
           {/* Role + Effective date */}
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
-            <div className="field">
-              <label className="flabel">Submitted As</label>
-              <select className="finput" value={role} onChange={e=>setRole(e.target.value)}>
-                <option value="NOC">NOC</option>
-                <option value="PARTNER">Partner</option>
-              </select>
-            </div>
-            <div className="field">
-              <label className="flabel">Effective Date</label>
-              {isPartnerRestricted ? (
-                <input className="finput" type="date" value={partnerDate} min={minDate}
-                  onChange={e=>setPartnerDate(e.target.value)}
-                  style={{color:"#d97706"}} />
-              ) : (
-                <div className="finput" style={{background:"#f1f5f9",color:"#16a34a",fontSize:11,fontWeight:600,display:"flex",alignItems:"center"}}>
-                  Effective immediately
-                </div>
-              )}
+          <div className="field">
+            <label className="flabel">Submitted As</label>
+            <div 
+              className="finput" 
+              style={{
+                background:"#f1f5f9",
+                fontWeight:600,
+                color:
+                  role==="ADMIN"    ? "#4f46e5" :
+                  role==="NOC"      ? "#16a34a" :
+                  role==="KAM"      ? "#0891b2" :
+                  role==="ACCOUNTS" ? "#b45309" :
+                  role==="PARTNER"  ? "#7c3aed" :
+                                      "#64748b"
+              }}
+            >
+              {role}
             </div>
           </div>
 
@@ -1994,6 +2134,171 @@ ${dataRows}
     </div>
   );
 }
+
+// ─── Login Page CSS ───────────────────────────────────────────────
+const LOGIN_CSS = `
+.login-page {
+  position: relative;
+  min-height: 100vh;
+  width: 100%;
+  background: #0A0F1E;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  overflow: hidden;
+  font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
+}
+.login-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+}
+.login-card {
+  position: relative;
+  z-index: 2;
+  max-width: 400px;
+  width: 100%;
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  border-radius: 16px;
+  padding: 36px 32px;
+  box-shadow: 0 20px 60px rgba(0,0,0,.5), 0 0 100px rgba(99,102,241,.2);
+}
+.login-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 28px;
+}
+.login-logo {
+  width: 42px;
+  height: 42px;
+  background: linear-gradient(135deg, #6366F1, #8B5CF6);
+  border-radius: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 16px rgba(99,102,241,.5);
+}
+.login-brand-title {
+  color: white;
+  font-weight: 700;
+  font-size: 16px;
+}
+.login-brand-sub {
+  color: #94A3B8;
+  font-size: 11px;
+}
+.login-heading {
+  color: white;
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0 0 6px;
+}
+.login-subheading {
+  color: #94A3B8;
+  font-size: 13px;
+  margin: 0 0 24px;
+}
+.login-label {
+  display: block;
+  font-size: 11px;
+  color: #94A3B8;
+  margin-bottom: 6px;
+  letter-spacing: 0.3px;
+  font-weight: 600;
+}
+.login-input {
+  width: 100%;
+  padding: 11px 14px;
+  margin-bottom: 14px;
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 8px;
+  color: white;
+  font-size: 13px;
+  box-sizing: border-box;
+  outline: none;
+  transition: border-color .2s, box-shadow .2s;
+  font-family: inherit;
+}
+.login-input::placeholder { color: #475569; }
+.login-input:focus {
+  border-color: rgba(99,102,241,.6);
+  box-shadow: 0 0 0 3px rgba(99,102,241,.15);
+}
+.login-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  margin-bottom: 14px;
+  margin-top: 4px;
+}
+.login-remember {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #94A3B8;
+  cursor: pointer;
+}
+.login-remember input[type="checkbox"] {
+  width: 13px;
+  height: 13px;
+  accent-color: #6366F1;
+  cursor: pointer;
+}
+.login-forgot {
+  color: #818CF8;
+  text-decoration: none;
+  transition: color .2s;
+}
+.login-forgot:hover { color: #A5B4FC; }
+.login-error {
+  font-size: 12px;
+  color: #FCA5A5;
+  background: rgba(220, 38, 38, 0.1);
+  border: 1px solid rgba(220, 38, 38, 0.3);
+  border-radius: 7px;
+  padding: 8px 12px;
+  margin-bottom: 14px;
+}
+.login-button {
+  width: 100%;
+  padding: 12px;
+  background: linear-gradient(135deg, #6366F1, #8B5CF6);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(99,102,241,.4);
+  transition: transform .15s, box-shadow .2s, opacity .2s;
+  font-family: inherit;
+}
+.login-button:hover:not(:disabled) {
+  box-shadow: 0 6px 22px rgba(99,102,241,.55);
+}
+.login-button:active:not(:disabled) { transform: scale(0.98); }
+.login-button:disabled { opacity: 0.7; cursor: not-allowed; }
+.login-footer {
+  text-align: center;
+  font-size: 10px;
+  color: #475569;
+  margin-top: 18px;
+  letter-spacing: 0.4px;
+}
+@media (max-width: 480px) {
+  .login-card { padding: 28px 22px; }
+  .login-heading { font-size: 20px; }
+}
+`;
 
 // ─── CSS ──────────────────────────────────────────────────────────
 const CSS = `
