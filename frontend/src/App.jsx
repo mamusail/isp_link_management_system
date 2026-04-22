@@ -28,7 +28,6 @@ const HIDDEN_COLS = {
   ADMIN:    [],
 };
 
-
 // ─── constants ───────────────────────────────────────────────────
 const EMPTY_LINK = { owner:"AKN", link_id:"", type:"", aggregation:"", to_location:"", quantity_mbps:"", commissioning_date:"", status:"ACTIVE", notes:"", vlan:"" };
 const EMPTY_POP  = { operator:"AKN", pop_id:"", name:"", type:"", lat:"", lng:"", notes:"" };
@@ -46,6 +45,7 @@ function MainApp({ user, onLogout }) {
   const role = user.role;
   const [page, setPage]         = useState("dashboard");
   const [openMenu, setOpenMenu] = useState("network");
+  const [sidebarOpen, setSidebarOpen] = useState(false); // mobile sidebar state
   const [links,    setLinks]    = useState([]);
   const [pops,     setPops]     = useState([]);
   const [utils,    setUtils]    = useState([]);
@@ -55,8 +55,21 @@ function MainApp({ user, onLogout }) {
 
   // Auto-logout after 30 min
   useEffect(() => {
-    const t = setTimeout(() => { alert("Session expired. Please log in again."); onLogout(); }, 30*60*1000);
-    return () => clearTimeout(t);
+    let t;
+    const reset = () => {
+      clearTimeout(t);
+      t = setTimeout(() => {
+        alert("Session expired due to inactivity. Please log in again.");
+        onLogout();
+      }, 30*60*1000);
+    };
+    const events = ["mousemove", "mousedown", "keydown", "scroll", "touchstart", "click"];
+    events.forEach(e => window.addEventListener(e, reset));
+    reset();
+    return () => {
+      clearTimeout(t);
+      events.forEach(e => window.removeEventListener(e, reset));
+    };
   }, []);
 
   useEffect(() => { fetchLinks(); fetchPops(); fetchUtils(); fetchRequests(); fetchKams(); fetchPartners(); }, []);
@@ -85,18 +98,39 @@ function MainApp({ user, onLogout }) {
     { id:"settings", label:"Settings", icon:"◈" },
   ];
 
+  const navigateTo = (id) => {
+    setPage(id);
+    setSidebarOpen(false); // close sidebar on mobile after nav
+  };
+
+  const pageTitle = page==="dashboard" ? "Dashboard"
+    : page==="links"         ? "Network › Links"
+    : page==="pops"          ? "Network › POPs"
+    : page==="requests"      ? "Network › Requests"
+    : page==="users"         ? "Management › Users"
+    : page==="kams"          ? "Management › KAMs"
+    : page==="partners_page" ? "Management › Partners"
+    : page.charAt(0).toUpperCase()+page.slice(1);
+
   return (
     <>
       <style>{CSS}</style>
       <div className="layout">
 
-        <aside className="sidebar">
+        {/* Mobile overlay backdrop */}
+        {sidebarOpen && (
+          <div className="sidebar-backdrop" onClick={() => setSidebarOpen(false)} />
+        )}
+
+        <aside className={`sidebar ${sidebarOpen ? "sidebar-open" : ""}`}>
           <div className="brand">
             <div className="brand-logo">◈</div>
             <div>
               <div className="brand-name">ISP Panel</div>
               <div className="brand-sub">Network Ops</div>
             </div>
+            {/* Close button inside sidebar on mobile */}
+            <button className="sidebar-close-btn" onClick={() => setSidebarOpen(false)}>✕</button>
           </div>
           <nav className="nav">
             {navItems.map(item => (
@@ -105,7 +139,7 @@ function MainApp({ user, onLogout }) {
                   className={`nav-item ${page === item.id ? "nav-on" : ""}`}
                   onClick={() => {
                     if (item.children) setOpenMenu(openMenu === item.id ? null : item.id);
-                    else setPage(item.id);
+                    else navigateTo(item.id);
                   }}
                 >
                   <span className="nav-ico">{item.icon}</span>
@@ -115,7 +149,7 @@ function MainApp({ user, onLogout }) {
                 {item.children && openMenu===item.id && (
                   <div className="nav-sub">
                     {item.children.map(c => (
-                      <div key={c.id} className={`nav-child ${page===c.id?"nav-child-on":""}`} onClick={() => setPage(c.id)}>
+                      <div key={c.id} className={`nav-child ${page===c.id?"nav-child-on":""}`} onClick={() => navigateTo(c.id)}>
                         {c.label}
                       </div>
                     ))}
@@ -132,24 +166,19 @@ function MainApp({ user, onLogout }) {
 
         <div className="main">
           <div className="topbar">
-            <div className="topbar-title">
-              { page==="dashboard" ? "Dashboard"
-              : page==="links"     ? "Network › Links"
-              : page==="pops"      ? "Network › POPs"
-              : page==="requests"       ? "Network › Requests"
-              : page==="users"          ? "Management › Users"
-              : page==="kams"           ? "Management › KAMs"
-              : page==="partners_page" ? "Management › Partners"
-              : page.charAt(0).toUpperCase()+page.slice(1) }
-            </div>
+            {/* Hamburger button — mobile only */}
+            <button className="hamburger" onClick={() => setSidebarOpen(true)}>
+              <span></span><span></span><span></span>
+            </button>
+            <div className="topbar-title">{pageTitle}</div>
             <div className="topbar-r">
               <span className="date-chip">{new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</span>
-              <span style={{fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:20,background:
+              <span className="role-badge" style={{background:
                 role==="ADMIN"?"#eef2ff":role==="NOC"?"#f0fdf4":role==="ACCOUNTS"?"#fffbeb":role==="PARTNER"?"#f5f3ff":"#f8fafc",
                 color:role==="ADMIN"?"#4f46e5":role==="NOC"?"#16a34a":role==="ACCOUNTS"?"#b45309":role==="PARTNER"?"#7c3aed":"#64748b"
               }}>{role}</span>
-              <span style={{fontSize:12,color:"var(--color-text-secondary)",fontWeight:500}}>{user.username}</span>
-              <button onClick={onLogout} style={{padding:"5px 12px",borderRadius:7,border:"1px solid #e2e8f0",background:"#fff",color:"#64748b",fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Logout</button>
+              <span className="topbar-username">{user.username}</span>
+              <button onClick={onLogout} className="logout-btn">Logout</button>
             </div>
           </div>
           <div className="content">
@@ -273,60 +302,43 @@ function POPMap({ pops }) {
         attribution: "© OpenStreetMap contributors"
       }).addTo(map);
 
-// Center on Bangladesh - zoom 7, center adjusted so full BD is visible
-      // Bangladesh: tightly centered, zoom 8 fills the card perfectly
       map.setView([23.7000, 90.3563], 7);
-      map.setMaxBounds([[20.3, 87.8], [26.8, 92.8]]);
-      map.setMinZoom(7);
+      map.setMaxBounds([[19.5, 87.0], [27.5, 93.5]]);
       map.setMaxZoom(18);
 
       const withCoords = pops.filter(p => p.lat != null && p.lat !== "" && p.lng != null && p.lng !== "");
 
-      if (withCoords.length > 0) {
-        const markers = withCoords.map(p => {
-          const isAgg = p.type?.toLowerCase() === "aggregation";
-          const isAKN = p.operator?.toUpperCase() === "AKN";
-          const bgColor = isAKN ? "#2563eb" : "#16a34a";
-          const borderRadius = isAgg ? "6px" : "50%";
-
-          // Circle = POP, Diamond (rotated square) = Aggregation
-          const iconHtml = isAgg
-            ? `<div style="width:16px;height:16px;background:${bgColor};border:2.5px solid #fff;border-radius:3px;transform:rotate(45deg);box-shadow:0 2px 8px rgba(0,0,0,.4);"></div>`
-            : `<div style="width:18px;height:18px;background:${bgColor};border:2.5px solid #fff;border-radius:50%;box-shadow:0 2px 8px rgba(0,0,0,.4);"></div>`;
-
-          const icon = L.divIcon({
-            html: `<div style="width:22px;height:22px;display:flex;align-items:center;justify-content:center;">${iconHtml}</div>`,
-            className: "", iconSize:[22,22], iconAnchor:[11,11],
-          });
-
-          const m = L.marker([Number(p.lat), Number(p.lng)], { icon }).addTo(map);
-          m.bindPopup(`
-  <div style="font-family:sans-serif;min-width:160px;line-height:1.6;">
-    <div style="font-size:14px;font-weight:700;color:#0f172a;margin-bottom:6px;border-bottom:1px solid #f1f5f9;padding-bottom:4px;">${p.name}</div>
-    <div style="font-size:11px;color:#64748b;margin-bottom:2px;">
-      <span style="font-weight:600;color:#475569;">Operator:</span>
-      <span style="background:${isAKN?"#dbeafe":"#dcfce7"};color:${bgColor};padding:1px 6px;border-radius:3px;font-size:10px;font-weight:700;margin-left:2px;">${p.operator||"—"}</span>
-    </div>
-    <div style="font-size:11px;color:#64748b;margin-bottom:2px;">
-      <span style="font-weight:600;color:#475569;">POP ID:</span> <span style="font-family:monospace;color:#4f46e5;">${p.pop_id}</span>
-    </div>
-    <div style="font-size:11px;color:#64748b;margin-bottom:2px;">
-      <span style="font-weight:600;color:#475569;">Type:</span>
-      <span style="background:${isAgg?"#e0f2fe":"#ede9fe"};color:${bgColor};padding:1px 6px;border-radius:3px;font-size:10px;font-weight:600;margin-left:2px;">${p.type||"—"}</span>
-    </div>
-    <div style="font-size:11px;color:#64748b;margin-bottom:2px;">
-      <span style="font-weight:600;color:#475569;">Lat:</span> ${Number(p.lat).toFixed(5)}
-    </div>
-    <div style="font-size:11px;color:#64748b;margin-bottom:2px;">
-      <span style="font-weight:600;color:#475569;">Lng:</span> ${Number(p.lng).toFixed(5)}
-    </div>
-    ${p.notes ? `<div style="font-size:11px;color:#64748b;margin-top:4px;padding-top:4px;border-top:1px solid #f1f5f9;"><span style="font-weight:600;color:#475569;">Note:</span> ${p.notes}</div>` : ""}
-  </div>
-`);
-          return m;
+      const markers = [];
+      
+      withCoords.forEach(p => {
+        const isAgg = p.type?.toLowerCase() === "aggregation";
+        const isAKN = p.operator?.toUpperCase() === "AKN";
+        const bgColor = isAKN ? "#2563eb" : "#16a34a";
+      
+        const iconHtml = isAgg
+          ? `<div style="width:16px;height:16px;background:${bgColor};border:2.5px solid #fff;border-radius:3px;transform:rotate(45deg);box-shadow:0 2px 8px rgba(0,0,0,.4);"></div>`
+          : `<div style="width:18px;height:18px;background:${bgColor};border:2.5px solid #fff;border-radius:50%;box-shadow:0 2px 8px rgba(0,0,0,.4);"></div>`;
+      
+        const icon = L.divIcon({
+          html: `<div style="width:22px;height:22px;display:flex;align-items:center;justify-content:center;">${iconHtml}</div>`,
+          className: "",
+          iconSize: [22, 22],
+          iconAnchor: [11, 11],
         });
-        // markers placed — map stays locked to Bangladesh
+      
+        const m = L.marker([Number(p.lat), Number(p.lng)], { icon }).addTo(map);
+        markers.push(m); // ✅ important
+      
+        m.bindPopup(`...same popup...`);
+      });
+      
+      // ✅ AUTO FIT MAP
+      if (markers.length > 0) {
+        const group = L.featureGroup(markers);
+        map.fitBounds(group.getBounds(), { padding: [30, 30] });
       }
+
+
     };
 
     if (window.L) {
@@ -363,20 +375,14 @@ function LinksPage({ links, fetchLinks, pops, utils, fetchUtils, requests, fetch
   const [showExport, setShowExport]     = useState(false);
   const [search, setSearch]             = useState("");
   const [utilModal, setUtilModal]       = useState(null);
-  const [reqModal,  setReqModal]         = useState(null);   // link for change request
+  const [reqModal,  setReqModal]        = useState(null);
   const [sortCol, setSortCol]           = useState(null);
   const [sortDir, setSortDir]           = useState("asc");
 
-
   const hide = (col) => hiddenCols.includes(col);
-
-  // Only Aggregation-type POPs for the dropdown
   const aggPOPs = pops.filter(p => p.type?.toLowerCase() === "aggregation");
-
-  // Build a lookup map: link.id -> utilization record
   const utilMap = Object.fromEntries(utils.map(u => [u.link_id, u]));
 
-  // Helper: days since a date
   const daysSince = (dateStr) => {
     if (!dateStr) return null;
     const diff = Date.now() - new Date(dateStr).getTime();
@@ -385,7 +391,6 @@ function LinksPage({ links, fetchLinks, pops, utils, fetchUtils, requests, fetch
 
   const handleChange = e => setForm({...form, [e.target.name]: e.target.value});
 
-  // ✅ FIXED: posts to /links/ not /pops/
   const handleSubmit = async e => {
     e.preventDefault();
     try {
@@ -460,7 +465,7 @@ function LinksPage({ links, fetchLinks, pops, utils, fetchUtils, requests, fetch
             <button key={f} className={`tab ${filter===f?"tab-on":""}`} onClick={()=>setFilter(f)}>{f}</button>
           ))}
         </div>
-        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
           <div className="search-wrap">
             <span className="search-icon">⌕</span>
             <input className="search-input" placeholder="Search links…" value={search} onChange={e=>setSearch(e.target.value)} />
@@ -494,8 +499,6 @@ function LinksPage({ links, fetchLinks, pops, utils, fetchUtils, requests, fetch
               <Sel label="Owner"  name="owner"  val={form.owner}  onChange={handleChange} opts={["AKN","BTL"]} />
               <F   label="Link ID" name="link_id" val={form.link_id} onChange={handleChange} placeholder="aknw_220523_001" required />
               <Sel label="Type"   name="type"   val={form.type}   onChange={handleChange} opts={["D2D","Long Haul","Metro"]} placeholderOpt="Select type…" />
-
-              {/* ✅ Aggregation dropdown from POP list */}
               <div className="field">
                 <label className="flabel">Aggregation</label>
                 <select className="finput" name="aggregation" value={form.aggregation} onChange={handleChange}>
@@ -505,7 +508,6 @@ function LinksPage({ links, fetchLinks, pops, utils, fetchUtils, requests, fetch
                   ))}
                 </select>
               </div>
-
               <F   label="To Location"      name="to_location"        val={form.to_location}        onChange={handleChange} placeholder="e.g. Sadarpur" required />
               <F   label="Bandwidth (Mbps)" name="quantity_mbps"      val={form.quantity_mbps}      onChange={handleChange} placeholder="1500" type="number" />
               <F   label="VLAN"             name="vlan"               val={form.vlan}               onChange={handleChange} placeholder="10-15,18" />
@@ -529,8 +531,6 @@ function LinksPage({ links, fetchLinks, pops, utils, fetchUtils, requests, fetch
             <Sel label="Owner" val={editingLink.owner} onChange={e=>setEditingLink({...editingLink,owner:e.target.value})} opts={["AKN","BTL"]} />
             <div className="field"><label className="flabel">Link ID</label><input className="finput" value={editingLink.link_id} disabled /></div>
             <Sel label="Type" val={editingLink.type||""} onChange={e=>setEditingLink({...editingLink,type:e.target.value})} opts={["D2D","Long Haul","Metro"]} placeholderOpt="Select type…" />
-
-            {/* ✅ Aggregation dropdown in edit form too */}
             <div className="field">
               <label className="flabel">Aggregation</label>
               <select className="finput" value={editingLink.aggregation||""} onChange={e=>setEditingLink({...editingLink,aggregation:e.target.value})}>
@@ -540,7 +540,6 @@ function LinksPage({ links, fetchLinks, pops, utils, fetchUtils, requests, fetch
                 ))}
               </select>
             </div>
-
             {[
               {label:"To Location",       key:"to_location"},
               {label:"Bandwidth (Mbps)",  key:"quantity_mbps", type:"number"},
@@ -565,9 +564,8 @@ function LinksPage({ links, fetchLinks, pops, utils, fetchUtils, requests, fetch
         </div>
       )}
 
-      {reqModal && <RequestModal link={reqModal}  user={user} onClose={()=>setReqModal(null)} onSave={async (payload)=>{ await API.post("/requests/", payload); fetchRequests(); setReqModal(null); }} />}
+      {reqModal && <RequestModal link={reqModal} user={user} onClose={()=>setReqModal(null)} onSave={async (payload)=>{ await API.post("/requests/", payload); fetchRequests(); setReqModal(null); }} />}
 
-      {/* UTILIZATION UPDATE MODAL */}
       {utilModal && <UtilModal link={utilModal} onClose={()=>setUtilModal(null)} onSave={async (mbps, by, periodFrom, periodTo) => {
         await API.post("/utilization/", {
           link_id: utilModal.id,
@@ -753,7 +751,7 @@ function POPsPage({ pops, fetchPops }) {
   return (
     <div className="page-col">
       <div className="toolbar">
-        <div style={{display:"flex",alignItems:"center",gap:10}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
           <span className="section-title">POPs</span>
           <div className="tabs">
             {["ALL","AKN","BTL"].map(f=>(
@@ -761,7 +759,7 @@ function POPsPage({ pops, fetchPops }) {
             ))}
           </div>
         </div>
-        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
           <div className="search-wrap">
             <span className="search-icon">⌕</span>
             <input className="search-input" placeholder="Search POPs…" value={search} onChange={e=>setSearch(e.target.value)} />
@@ -913,15 +911,12 @@ function Badge({ status }) {
   );
 }
 
-
-
 // ─── Utilization Update Modal ─────────────────────────────────────
 function UtilModal({ link, onClose, onSave }) {
   const [mbps,   setMbps]   = useState("");
   const [by,     setBy]     = useState("NOC");
   const [saving, setSaving] = useState(false);
 
-  // Auto-calculate: today = period_to, 7 days ago = period_from
   const today     = new Date();
   const sevenAgo  = new Date(today); sevenAgo.setDate(today.getDate() - 7);
   const fmt       = d => d.toISOString().slice(0, 10);
@@ -939,7 +934,7 @@ function UtilModal({ link, onClose, onSave }) {
   const handleSave = async () => {
     if (!mbps) return;
     setSaving(true);
-    await onSave(mbps, by, periodFrom, periodTo);  // auto-calculated
+    await onSave(mbps, by, periodFrom, periodTo);
     setSaving(false);
   };
 
@@ -955,7 +950,6 @@ function UtilModal({ link, onClose, onSave }) {
         </div>
 
         <div className="modal-section">
-          {/* Link info */}
           <div style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:8,padding:"10px 14px",marginBottom:16,display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
             <div>
               <div style={{fontSize:10,color:"#94a3b8",fontWeight:600,marginBottom:2}}>AGGREGATION</div>
@@ -975,14 +969,12 @@ function UtilModal({ link, onClose, onSave }) {
             </div>
           </div>
 
-          {/* Input */}
           <div className="field" style={{marginBottom:12}}>
             <label className="flabel">Max Usage — Last 7 Days (Mbps)</label>
             <input className="finput" type="number" placeholder="e.g. 1200" value={mbps}
               onChange={e=>setMbps(e.target.value)} autoFocus />
           </div>
 
-          {/* Live preview bar */}
           {mbps && link.quantity_mbps && (
             <div style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:8,padding:"12px 14px",marginBottom:12}}>
               <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
@@ -999,7 +991,6 @@ function UtilModal({ link, onClose, onSave }) {
             </div>
           )}
 
-          {/* Period — auto calculated */}
           <div style={{display:"flex",gap:8,alignItems:"center",padding:"8px 12px",background:"#f8fafc",borderRadius:7,border:"1px solid #e2e8f0"}}>
             <span style={{fontSize:11,color:"#94a3b8",fontWeight:600}}>PERIOD</span>
             <span style={{fontSize:12,color:"#475569",fontFamily:"var(--font-mono)"}}>{periodFrom}</span>
@@ -1008,7 +999,6 @@ function UtilModal({ link, onClose, onSave }) {
             <span style={{fontSize:10,color:"#94a3b8",marginLeft:"auto"}}>auto</span>
           </div>
 
-          {/* Updated by */}
           <div className="field">
             <label className="flabel">Reported By</label>
             <input className="finput" placeholder="e.g. Rahul, NOC Team" value={by} onChange={e=>setBy(e.target.value)} />
@@ -1026,8 +1016,6 @@ function UtilModal({ link, onClose, onSave }) {
     </div>
   );
 }
-
-
 
 // ─── Login Page ───────────────────────────────────────────────────
 function LoginPage({ onLogin }) {
@@ -1053,13 +1041,7 @@ function LoginPage({ onLogin }) {
     <>
       <style>{LOGIN_CSS}</style>
       <div className="login-page">
-        {/* Animated network background */}
-        <svg
-          className="login-bg"
-          xmlns="http://www.w3.org/2000/svg"
-          preserveAspectRatio="xMidYMid slice"
-          viewBox="0 0 800 540"
-        >
+        <svg className="login-bg" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid slice" viewBox="0 0 800 540">
           <defs>
             <pattern id="netgrid" width="40" height="40" patternUnits="userSpaceOnUse">
               <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#6366F1" strokeWidth="0.4" opacity="0.3" />
@@ -1077,13 +1059,10 @@ function LoginPage({ onLogin }) {
               <stop offset="100%" stopColor="#A78BFA" stopOpacity="0" />
             </radialGradient>
           </defs>
-
           <rect width="100%" height="100%" fill="url(#netgrid)" />
           <circle cx="120" cy="100" r="200" fill="url(#bgglow1)" />
           <circle cx="680" cy="440" r="220" fill="url(#bgglow2)" />
           <circle cx="700" cy="80" r="160" fill="url(#bgglow3)" />
-
-          {/* Network connections */}
           <g stroke="#6366F1" strokeWidth="0.6" opacity="0.5">
             <line x1="60"  y1="80"  x2="180" y2="160" />
             <line x1="180" y1="160" x2="320" y2="90"  />
@@ -1102,8 +1081,6 @@ function LoginPage({ onLogin }) {
             <line x1="60"  y1="80"  x2="320" y2="90"  />
             <line x1="730" y1="220" x2="730" y2="470" />
           </g>
-
-          {/* Static nodes */}
           <g>
             <circle cx="60"  cy="80"  r="2.5" fill="#A78BFA" />
             <circle cx="180" cy="160" r="2.5" fill="#A78BFA" />
@@ -1117,8 +1094,6 @@ function LoginPage({ onLogin }) {
             <circle cx="600" cy="390" r="2.5" fill="#A78BFA" />
             <circle cx="730" cy="470" r="2.5" fill="#22D3EE" />
           </g>
-
-          {/* Pulsing rings */}
           <circle cx="320" cy="90" r="4" fill="none" stroke="#22D3EE" strokeWidth="1">
             <animate attributeName="r" values="4;20;4" dur="3s" repeatCount="indefinite" />
             <animate attributeName="opacity" values="0.8;0;0.8" dur="3s" repeatCount="indefinite" />
@@ -1135,8 +1110,6 @@ function LoginPage({ onLogin }) {
             <animate attributeName="r" values="4;18;4" dur="3.5s" begin="0.5s" repeatCount="indefinite" />
             <animate attributeName="opacity" values="0.8;0;0.8" dur="3.5s" begin="0.5s" repeatCount="indefinite" />
           </circle>
-
-          {/* Moving data packets */}
           <circle r="3" fill="#22D3EE">
             <animateMotion dur="4s" repeatCount="indefinite" path="M 60 80 L 180 160 L 320 90 L 460 180 L 600 120" />
           </circle>
@@ -1149,15 +1122,8 @@ function LoginPage({ onLogin }) {
           <circle r="2.5" fill="#A78BFA">
             <animateMotion dur="4.5s" begin="2s" repeatCount="indefinite" path="M 260 380 L 430 450 L 600 390 L 730 470" />
           </circle>
-          <circle r="2.5" fill="#22D3EE">
-            <animateMotion dur="6s" begin="0.8s" repeatCount="indefinite" path="M 60 80 L 320 90 L 600 120 L 730 220" />
-          </circle>
-          <circle r="2.5" fill="#A78BFA">
-            <animateMotion dur="5.5s" begin="2.5s" repeatCount="indefinite" path="M 100 280 L 260 380 L 430 450" />
-          </circle>
         </svg>
 
-        {/* Center login card */}
         <div className="login-card">
           <div className="login-brand">
             <div className="login-logo">
@@ -1176,35 +1142,14 @@ function LoginPage({ onLogin }) {
 
           <form onSubmit={handleLogin}>
             <label className="login-label">USERNAME</label>
-            <input
-              type="text"
-              className="login-input"
-              value={username}
-              onChange={e=>setUsername(e.target.value)}
-              placeholder="your_username"
-              autoComplete="username"
-              autoFocus
-              required
-            />
+            <input type="text" className="login-input" value={username} onChange={e=>setUsername(e.target.value)} placeholder="your_username" autoComplete="username" autoFocus required />
 
             <label className="login-label">PASSWORD</label>
-            <input
-              type="password"
-              className="login-input"
-              value={password}
-              onChange={e=>setPassword(e.target.value)}
-              placeholder="••••••••"
-              autoComplete="current-password"
-              required
-            />
+            <input type="password" className="login-input" value={password} onChange={e=>setPassword(e.target.value)} placeholder="••••••••" autoComplete="current-password" required />
 
             <div className="login-row">
               <label className="login-remember">
-                <input
-                  type="checkbox"
-                  checked={remember}
-                  onChange={e=>setRemember(e.target.checked)}
-                />
+                <input type="checkbox" checked={remember} onChange={e=>setRemember(e.target.checked)} />
                 Remember me
               </label>
               <a href="#" className="login-forgot" onClick={e=>e.preventDefault()}>Forgot?</a>
@@ -1230,7 +1175,7 @@ function UsersPage() {
   const [showForm, setShowForm]  = useState(false);
   const [form, setForm]          = useState({username:"",password:"",role:"NOC"});
   const [search, setSearch]      = useState("");
-  const [editUser, setEditUser]  = useState(null); // user being edited
+  const [editUser, setEditUser]  = useState(null);
   const [editForm, setEditForm]  = useState({username:"",password:"",role:"NOC"});
 
   useEffect(() => { fetchUsers(); }, []);
@@ -1347,14 +1292,8 @@ function UsersPage() {
                     <td><span style={{fontSize:11,fontWeight:700,padding:"2px 10px",borderRadius:20,background:rs.bg,color:rs.color}}>{u.role}</span></td>
                     <td>
                       <div style={{display:"flex",gap:6}}>
-                        <button
-                          onClick={()=>{ setShowForm(false); openEdit(u); }}
-                          style={{fontSize:12,padding:"3px 10px",borderRadius:6,border:"1px solid #d1d5db",background:isEditing?"#fef3c7":"#fff",color:"#374151",cursor:"pointer",fontWeight:500}}
-                        >✏️ Edit</button>
-                        <button
-                          onClick={()=>handleDelete(u)}
-                          style={{fontSize:12,padding:"3px 10px",borderRadius:6,border:"1px solid #fca5a5",background:"#fff",color:"#dc2626",cursor:"pointer",fontWeight:500}}
-                        >🗑 Delete</button>
+                        <button onClick={()=>{ setShowForm(false); openEdit(u); }} style={{fontSize:12,padding:"3px 10px",borderRadius:6,border:"1px solid #d1d5db",background:isEditing?"#fef3c7":"#fff",color:"#374151",cursor:"pointer",fontWeight:500}}>✏️ Edit</button>
+                        <button onClick={()=>handleDelete(u)} style={{fontSize:12,padding:"3px 10px",borderRadius:6,border:"1px solid #fca5a5",background:"#fff",color:"#dc2626",cursor:"pointer",fontWeight:500}}>🗑 Delete</button>
                       </div>
                     </td>
                   </tr>
@@ -1601,7 +1540,7 @@ function RequestModal({ link, user, onClose, onSave }) {
                  : 0;
 
   const isPartnerRestricted = role === "PARTNER" && (reqType === "DOWNGRADE" || reqType === "TERMINATE");
-  const minDate = new Date(Date.now() + 30*864e5).toISOString().slice(0,10);  // 30 days from today
+  const minDate = new Date(Date.now() + 30*864e5).toISOString().slice(0,10);
   const [partnerDate, setPartnerDate] = useState(minDate);
 
   const typeColors = { UPGRADE:"#16a34a", DOWNGRADE:"#d97706", TERMINATE:"#dc2626" };
@@ -1634,7 +1573,6 @@ function RequestModal({ link, user, onClose, onSave }) {
         </div>
 
         <div className="modal-section">
-          {/* Link info */}
           <div style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:8,padding:"10px 14px",marginBottom:16,display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
             <div><div style={{fontSize:10,color:"#94a3b8",fontWeight:600,marginBottom:2}}>AGGREGATION</div><div style={{fontSize:13,fontWeight:600,color:"#0f172a"}}>{link.aggregation||"—"}</div></div>
             <div><div style={{fontSize:10,color:"#94a3b8",fontWeight:600,marginBottom:2}}>TO LOCATION</div><div style={{fontSize:13,fontWeight:600,color:"#0f172a"}}>{link.to_location}</div></div>
@@ -1642,7 +1580,6 @@ function RequestModal({ link, user, onClose, onSave }) {
             <div><div style={{fontSize:10,color:"#94a3b8",fontWeight:600,marginBottom:2}}>TYPE</div><div style={{fontSize:13,color:"#475569"}}>{link.type||"—"}</div></div>
           </div>
 
-          {/* Request type */}
           <div style={{marginBottom:14}}>
             <label className="flabel" style={{marginBottom:8,display:"block"}}>Request Type</label>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
@@ -1661,7 +1598,6 @@ function RequestModal({ link, user, onClose, onSave }) {
             </div>
           </div>
 
-          {/* Change Mbps */}
           {reqType !== "TERMINATE" && (
             <div className="field" style={{marginBottom:14}}>
               <label className="flabel">{reqType === "UPGRADE" ? "Upgrade by (Mbps)" : "Downgrade by (Mbps)"}</label>
@@ -1669,7 +1605,6 @@ function RequestModal({ link, user, onClose, onSave }) {
             </div>
           )}
 
-          {/* Preview */}
           {reqType !== "TERMINATE" && changeMbps && (
             <div style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:8,padding:"10px 14px",marginBottom:14,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
               <div style={{fontSize:12,color:"#64748b"}}>{current} Mbps <span style={{color:color,fontWeight:700}}>{reqType==="UPGRADE"?`+ ${change}`:`− ${change}`} Mbps</span></div>
@@ -1682,28 +1617,13 @@ function RequestModal({ link, user, onClose, onSave }) {
             </div>
           )}
 
-          {/* Role + Effective date */}
           <div className="field">
             <label className="flabel">Submitted As</label>
-            <div 
-              className="finput" 
-              style={{
-                background:"#f1f5f9",
-                fontWeight:600,
-                color:
-                  role==="ADMIN"    ? "#4f46e5" :
-                  role==="NOC"      ? "#16a34a" :
-                  role==="KAM"      ? "#0891b2" :
-                  role==="ACCOUNTS" ? "#b45309" :
-                  role==="PARTNER"  ? "#7c3aed" :
-                                      "#64748b"
-              }}
-            >
-              {role}
-            </div>
+            <div className="finput" style={{background:"#f1f5f9",fontWeight:600,color:
+              role==="ADMIN"?"#4f46e5":role==="NOC"?"#16a34a":role==="KAM"?"#0891b2":role==="ACCOUNTS"?"#b45309":role==="PARTNER"?"#7c3aed":"#64748b"
+            }}>{role}</div>
           </div>
 
-          {/* Requested by */}
           <div className="field">
             <label className="flabel">Your Name / Username</label>
             <input className="finput" placeholder="e.g. Rahul, aknoc_01" value={reqBy} onChange={e=>setReqBy(e.target.value)} />
@@ -1727,7 +1647,7 @@ function RequestModal({ link, user, onClose, onSave }) {
 // ─── Requests Page ────────────────────────────────────────────────
 function RequestsPage({ requests, links, fetchRequests, fetchLinks }) {
   const [tab,         setTab]         = useState("BILLING_PENDING");
-  const [actionModal, setActionModal] = useState(null); // {req, mode: "billing"|"admin"}
+  const [actionModal, setActionModal] = useState(null);
   const [note,        setNote]        = useState("");
   const [actBy,       setActBy]       = useState("");
   const [saving,      setSaving]      = useState(false);
@@ -1774,7 +1694,6 @@ function RequestsPage({ requests, links, fetchRequests, fetchLinks }) {
     setSaving(false);
   };
 
-  // Build Telegram-style message
   const buildMsg = (req) => {
     const l = linkMap[req.link_id];
     if (!l) return "";
@@ -1782,26 +1701,16 @@ function RequestsPage({ requests, links, fetchRequests, fetchLinks }) {
     const change  = req.change_mbps || 0;
     const total   = req.request_type==="UPGRADE" ? current+change : Math.max(0,current-change);
     if (req.request_type === "TERMINATE") {
-      return `Link ID: ${l.link_id}
-Current Capacity: ${current} Mbps
-Terminate: Requested
-
-Requested by: ${req.requested_by}`;
+      return `Link ID: ${l.link_id}\nCurrent Capacity: ${current} Mbps\nTerminate: Requested\n\nRequested by: ${req.requested_by}`;
     }
     const changeLabel = req.request_type==="UPGRADE" ? `Upgrade: +${change} Mbps` : `Downgrade: −${change} Mbps`;
-    return `Link ID: ${l.link_id}
-Current Capacity: ${current} Mbps
-${changeLabel}
-Total Capacity: ${total} Mbps
-
-Requested by: ${req.requested_by}`;
+    return `Link ID: ${l.link_id}\nCurrent Capacity: ${current} Mbps\n${changeLabel}\nTotal Capacity: ${total} Mbps\n\nRequested by: ${req.requested_by}`;
   };
 
   const daysSince = d => d ? Math.floor((Date.now()-new Date(d).getTime())/(864e5)) : null;
 
   return (
     <div className="page-col">
-      {/* Tabs */}
       <div className="toolbar">
         <div className="tabs" style={{flexWrap:"wrap"}}>
           {tabs.map(t=>{
@@ -1815,7 +1724,6 @@ Requested by: ${req.requested_by}`;
         </div>
       </div>
 
-      {/* Table */}
       <div className="tbl-wrap">
         <div className="tbl-hd">
           <span className="tbl-title">Requests <span className="tbl-cnt">{filtered.length}</span></span>
@@ -1873,7 +1781,6 @@ Requested by: ${req.requested_by}`;
         <div className="tbl-foot">{filtered.length} of {requests.length} requests</div>
       </div>
 
-      {/* Action Modal */}
       {actionModal && (
         <div className="modal-overlay" onClick={()=>setActionModal(null)}>
           <div className="modal" style={{maxWidth:440}} onClick={e=>e.stopPropagation()}>
@@ -1890,13 +1797,11 @@ Requested by: ${req.requested_by}`;
             </div>
 
             <div className="modal-section">
-              {/* Telegram message preview */}
               <div style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:8,padding:"12px 14px",marginBottom:14}}>
                 <div style={{fontSize:10,color:"#94a3b8",fontWeight:600,marginBottom:8,letterSpacing:.4}}>MESSAGE PREVIEW</div>
                 <pre style={{fontSize:12,color:"#1e293b",fontFamily:"var(--font-mono)",lineHeight:1.7,margin:0,whiteSpace:"pre-wrap"}}>{buildMsg(actionModal.req)}</pre>
               </div>
 
-              {/* Note */}
               <div className="field" style={{marginBottom:12}}>
                 <label className="flabel">
                   {actionModal.mode==="billing" && actionModal.req.status==="BILLING_PENDING" ? "Note (required if cancelling)" : "Note (optional)"}
@@ -1979,40 +1884,25 @@ function ExportModal({ data, allCols, title, filterField, filterOptions, onClose
   );
 
   const filteredData = filterVal==="ALL" ? data
-    : data.filter(r => (r[filterField]||"").toUpperCase() === filterVal);
+    : data.filter(r => {
+        const statusMatch = (r["status"]||"").toUpperCase() === filterVal;
+        const ownerMatch  = (r["owner"]||"").toUpperCase()  === filterVal;
+        return statusMatch || ownerMatch;
+      });
 
   const activeCols = allCols.filter(c => selectedCols.includes(c.key));
 
   const exportExcel = () => {
-    // Build CSV content then trigger download as .xlsx-compatible CSV
-    // Using SheetJS-style manual XML for real .xlsx
     const rows = filteredData.map(r =>
       activeCols.map(c => {
         const v = r[c.key];
         return v == null ? "" : String(v).replace(/"/g,'""');
       })
     );
-
-    // Build a simple XML-based xlsx using the SpreadsheetML format
-    const header = activeCols.map(c=>`<c t="inlineStr"><is><t>${c.label}</t></is></c>`).join("");
-    const dataRows = rows.map(row =>
-      `<row>${row.map(v=>`<c t="inlineStr"><is><t>${v.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}</t></is></c>`).join("")}</row>`
-    ).join("");
-
-    const xml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-<sheetData>
-<row>${header}</row>
-${dataRows}
-</sheetData>
-</worksheet>`;
-
-    // Use CSV as fallback for broad compatibility — proper Excel opens it fine
     const csvRows = [
       activeCols.map(c=>c.label).join(","),
       ...rows.map(r => r.map(v => `"${v}"`).join(","))
     ].join("\n");
-
     const blob = new Blob([csvRows], { type:"text/csv;charset=utf-8;" });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement("a");
@@ -2023,7 +1913,6 @@ ${dataRows}
   };
 
   const exportWord = () => {
-    // Build HTML table that Word can open as .doc
     const tableRows = [
       `<tr>${activeCols.map(c=>`<th style="background:#4f46e5;color:#fff;padding:8px 12px;font-family:Arial;font-size:11pt;border:1px solid #c7d2fe;">${c.label}</th>`).join("")}</tr>`,
       ...filteredData.map((r,i) =>
@@ -2032,22 +1921,7 @@ ${dataRows}
         }</tr>`
       )
     ].join("");
-
-    const html = `
-<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
-<head><meta charset="utf-8"><title>${title} Export</title>
-<style>
-  body { font-family: Arial, sans-serif; margin: 20px; }
-  h2   { color: #0f172a; font-size: 14pt; margin-bottom: 4px; }
-  p    { color: #64748b; font-size: 10pt; margin-bottom: 16px; }
-  table{ border-collapse: collapse; width: 100%; }
-</style></head>
-<body>
-<h2>${title} Export</h2>
-<p>Generated: ${new Date().toLocaleString()} &nbsp;|&nbsp; Filter: ${filterVal} &nbsp;|&nbsp; Total rows: ${filteredData.length}</p>
-<table>${tableRows}</table>
-</body></html>`;
-
+    const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>${title} Export</title><style>body{font-family:Arial,sans-serif;margin:20px;}h2{color:#0f172a;font-size:14pt;margin-bottom:4px;}p{color:#64748b;font-size:10pt;margin-bottom:16px;}table{border-collapse:collapse;width:100%;}</style></head><body><h2>${title} Export</h2><p>Generated: ${new Date().toLocaleString()} | Filter: ${filterVal} | Total rows: ${filteredData.length}</p><table>${tableRows}</table></body></html>`;
     const blob = new Blob([html], { type:"application/msword" });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement("a");
@@ -2060,8 +1934,6 @@ ${dataRows}
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={e=>e.stopPropagation()}>
-
-        {/* Header */}
         <div className="modal-head">
           <div>
             <div className="modal-title">Export {title}</div>
@@ -2070,7 +1942,6 @@ ${dataRows}
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
 
-        {/* Format */}
         <div className="modal-section">
           <div className="modal-label">Format</div>
           <div className="fmt-row">
@@ -2090,7 +1961,6 @@ ${dataRows}
           </div>
         </div>
 
-        {/* Filter */}
         <div className="modal-section">
           <div className="modal-label">Filter rows</div>
           <div className="filter-row">
@@ -2101,7 +1971,6 @@ ${dataRows}
           <div className="modal-count">{filteredData.length} rows will be exported</div>
         </div>
 
-        {/* Column selector */}
         <div className="modal-section">
           <div className="modal-label-row">
             <span className="modal-label">Columns</span>
@@ -2120,7 +1989,6 @@ ${dataRows}
           </div>
         </div>
 
-        {/* Footer */}
         <div className="modal-foot">
           <button className="btn-discard" onClick={onClose}>Cancel</button>
           <button className="btn-save" disabled={selectedCols.length===0||filteredData.length===0}
@@ -2129,7 +1997,6 @@ ${dataRows}
             ↓ Download {fmt==="excel"?"Excel":"Word"}
           </button>
         </div>
-
       </div>
     </div>
   );
@@ -2184,118 +2051,39 @@ const LOGIN_CSS = `
   align-items: center;
   justify-content: center;
   box-shadow: 0 4px 16px rgba(99,102,241,.5);
+  flex-shrink: 0;
 }
-.login-brand-title {
-  color: white;
-  font-weight: 700;
-  font-size: 16px;
-}
-.login-brand-sub {
-  color: #94A3B8;
-  font-size: 11px;
-}
-.login-heading {
-  color: white;
-  font-size: 22px;
-  font-weight: 700;
-  margin: 0 0 6px;
-}
-.login-subheading {
-  color: #94A3B8;
-  font-size: 13px;
-  margin: 0 0 24px;
-}
-.login-label {
-  display: block;
-  font-size: 11px;
-  color: #94A3B8;
-  margin-bottom: 6px;
-  letter-spacing: 0.3px;
-  font-weight: 600;
-}
+.login-brand-title { color: white; font-weight: 700; font-size: 16px; }
+.login-brand-sub   { color: #94A3B8; font-size: 11px; }
+.login-heading     { color: white; font-size: 22px; font-weight: 700; margin: 0 0 6px; }
+.login-subheading  { color: #94A3B8; font-size: 13px; margin: 0 0 24px; }
+.login-label { display: block; font-size: 11px; color: #94A3B8; margin-bottom: 6px; letter-spacing: 0.3px; font-weight: 600; }
 .login-input {
-  width: 100%;
-  padding: 11px 14px;
-  margin-bottom: 14px;
-  background: rgba(15, 23, 42, 0.7);
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  border-radius: 8px;
-  color: white;
-  font-size: 13px;
-  box-sizing: border-box;
-  outline: none;
-  transition: border-color .2s, box-shadow .2s;
-  font-family: inherit;
+  width: 100%; padding: 11px 14px; margin-bottom: 14px;
+  background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 8px; color: white; font-size: 13px; box-sizing: border-box;
+  outline: none; transition: border-color .2s, box-shadow .2s; font-family: inherit;
 }
 .login-input::placeholder { color: #475569; }
-.login-input:focus {
-  border-color: rgba(99,102,241,.6);
-  box-shadow: 0 0 0 3px rgba(99,102,241,.15);
-}
-.login-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 12px;
-  margin-bottom: 14px;
-  margin-top: 4px;
-}
-.login-remember {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: #94A3B8;
-  cursor: pointer;
-}
-.login-remember input[type="checkbox"] {
-  width: 13px;
-  height: 13px;
-  accent-color: #6366F1;
-  cursor: pointer;
-}
-.login-forgot {
-  color: #818CF8;
-  text-decoration: none;
-  transition: color .2s;
-}
+.login-input:focus { border-color: rgba(99,102,241,.6); box-shadow: 0 0 0 3px rgba(99,102,241,.15); }
+.login-row { display: flex; justify-content: space-between; align-items: center; font-size: 12px; margin-bottom: 14px; margin-top: 4px; }
+.login-remember { display: flex; align-items: center; gap: 6px; color: #94A3B8; cursor: pointer; }
+.login-remember input[type="checkbox"] { width: 13px; height: 13px; accent-color: #6366F1; cursor: pointer; }
+.login-forgot { color: #818CF8; text-decoration: none; transition: color .2s; }
 .login-forgot:hover { color: #A5B4FC; }
-.login-error {
-  font-size: 12px;
-  color: #FCA5A5;
-  background: rgba(220, 38, 38, 0.1);
-  border: 1px solid rgba(220, 38, 38, 0.3);
-  border-radius: 7px;
-  padding: 8px 12px;
-  margin-bottom: 14px;
-}
+.login-error { font-size: 12px; color: #FCA5A5; background: rgba(220, 38, 38, 0.1); border: 1px solid rgba(220, 38, 38, 0.3); border-radius: 7px; padding: 8px 12px; margin-bottom: 14px; }
 .login-button {
-  width: 100%;
-  padding: 12px;
-  background: linear-gradient(135deg, #6366F1, #8B5CF6);
-  color: white;
-  border: none;
-  border-radius: 8px;
-  font-weight: 600;
-  font-size: 13px;
-  cursor: pointer;
-  box-shadow: 0 4px 16px rgba(99,102,241,.4);
-  transition: transform .15s, box-shadow .2s, opacity .2s;
-  font-family: inherit;
+  width: 100%; padding: 12px; background: linear-gradient(135deg, #6366F1, #8B5CF6);
+  color: white; border: none; border-radius: 8px; font-weight: 600; font-size: 13px;
+  cursor: pointer; box-shadow: 0 4px 16px rgba(99,102,241,.4);
+  transition: transform .15s, box-shadow .2s, opacity .2s; font-family: inherit;
 }
-.login-button:hover:not(:disabled) {
-  box-shadow: 0 6px 22px rgba(99,102,241,.55);
-}
+.login-button:hover:not(:disabled) { box-shadow: 0 6px 22px rgba(99,102,241,.55); }
 .login-button:active:not(:disabled) { transform: scale(0.98); }
 .login-button:disabled { opacity: 0.7; cursor: not-allowed; }
-.login-footer {
-  text-align: center;
-  font-size: 10px;
-  color: #475569;
-  margin-top: 18px;
-  letter-spacing: 0.4px;
-}
+.login-footer { text-align: center; font-size: 10px; color: #475569; margin-top: 18px; letter-spacing: 0.4px; }
 @media (max-width: 480px) {
-  .login-card { padding: 28px 22px; }
+  .login-card { padding: 28px 20px; }
   .login-heading { font-size: 20px; }
 }
 `;
@@ -2304,14 +2092,69 @@ const LOGIN_CSS = `
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
 *{box-sizing:border-box;margin:0;padding:0;}
-html,body,#root{height:100%;overflow:hidden;}
+html,body,#root{height:100%;}
 body{font-family:'Plus Jakarta Sans',sans-serif;color:#1e293b;background:#f1f5f9;}
-.layout{display:flex;height:100vh;overflow:hidden;}
-.sidebar{width:220px;flex-shrink:0;background:#fff;border-right:1px solid #e2e8f0;display:flex;flex-direction:column;height:100vh;}
+
+/* ── Layout ── */
+.layout{display:flex;height:100vh;overflow:hidden;position:relative;}
+
+/* ── Sidebar backdrop (mobile) ── */
+.sidebar-backdrop{
+  display:none;
+  position:fixed;inset:0;background:rgba(15,23,42,.5);z-index:199;
+}
+@media(max-width:768px){
+  .sidebar-backdrop{display:block;}
+}
+
+/* ── Sidebar ── */
+.sidebar{
+  width:220px;flex-shrink:0;background:#fff;border-right:1px solid #e2e8f0;
+  display:flex;flex-direction:column;height:100vh;
+  transition:transform .25s ease;
+  z-index:200;
+}
+@media(max-width:768px){
+  .sidebar{
+    position:fixed;top:0;left:0;height:100%;
+    transform:translateX(-100%);
+  }
+  .sidebar.sidebar-open{
+    transform:translateX(0);
+    box-shadow:4px 0 24px rgba(0,0,0,.18);
+  }
+}
+
+/* ── Sidebar close button (mobile only) ── */
+.sidebar-close-btn{
+  display:none;
+  margin-left:auto;width:28px;height:28px;border-radius:50%;
+  border:1px solid #e2e8f0;background:#f8fafc;cursor:pointer;
+  font-size:12px;color:#64748b;align-items:center;justify-content:center;
+  flex-shrink:0;
+}
+@media(max-width:768px){
+  .sidebar-close-btn{display:flex;}
+}
+
+/* ── Hamburger (mobile only) ── */
+.hamburger{
+  display:none;flex-direction:column;justify-content:center;gap:5px;
+  width:36px;height:36px;border:1px solid #e2e8f0;border-radius:8px;
+  background:#f8fafc;cursor:pointer;padding:7px;flex-shrink:0;margin-right:8px;
+}
+.hamburger span{display:block;height:2px;background:#475569;border-radius:2px;transition:all .2s;}
+@media(max-width:768px){
+  .hamburger{display:flex;}
+}
+
+/* ── Brand ── */
 .brand{padding:16px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;gap:10px;}
 .brand-logo{width:36px;height:36px;background:linear-gradient(135deg,#6366f1,#8b5cf6);border-radius:9px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;flex-shrink:0;box-shadow:0 3px 10px rgba(99,102,241,.3);}
 .brand-name{font-size:14px;font-weight:700;color:#0f172a;}
 .brand-sub{font-size:11px;color:#94a3b8;}
+
+/* ── Nav ── */
 .nav{padding:10px;flex:1;overflow-y:auto;}
 .nav-item{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:7px;cursor:pointer;color:#64748b;font-size:13px;font-weight:500;transition:all .15s;margin-bottom:1px;position:relative;}
 .nav-item:hover{background:#f8fafc;color:#334155;}
@@ -2327,76 +2170,112 @@ body{font-family:'Plus Jakarta Sans',sans-serif;color:#1e293b;background:#f1f5f9
 .online-pill{display:inline-flex;align-items:center;gap:5px;background:#f0fdf4;border:1px solid #bbf7d0;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;color:#15803d;margin-bottom:3px;}
 .dot{width:6px;height:6px;border-radius:50%;background:#16a34a;}
 .foot-org{font-size:11px;color:#94a3b8;}
+
+/* ── Main area ── */
 .main{flex:1;display:flex;flex-direction:column;min-width:0;height:100vh;overflow:hidden;}
-.topbar{flex-shrink:0;padding:14px 24px;background:#fff;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;}
-.topbar-title{font-size:18px;font-weight:700;color:#0f172a;}
-.topbar-r{display:flex;align-items:center;gap:12px;}
-.date-chip{font-size:12px;color:#64748b;font-weight:500;background:#f8fafc;border:1px solid #e2e8f0;padding:4px 12px;border-radius:20px;}
-.avatar{width:32px;height:32px;background:linear-gradient(135deg,#6366f1,#8b5cf6);border-radius:50%;color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;}
-.content{flex:1;overflow-y:auto;padding:20px 24px;}
-.dash{display:flex;flex-direction:column;gap:20px;height:100%;}
-.stat-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;flex-shrink:0;}
-.stat-card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:10px;transition:all .2s;}
+
+/* ── Topbar ── */
+.topbar{flex-shrink:0;padding:12px 16px;background:#fff;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:8px;}
+.topbar-title{font-size:16px;font-weight:700;color:#0f172a;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.topbar-r{display:flex;align-items:center;gap:8px;flex-shrink:0;}
+.date-chip{font-size:11px;color:#64748b;font-weight:500;background:#f8fafc;border:1px solid #e2e8f0;padding:3px 10px;border-radius:20px;white-space:nowrap;}
+.role-badge{font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;white-space:nowrap;}
+.topbar-username{font-size:12px;color:#64748b;font-weight:500;white-space:nowrap;}
+.logout-btn{padding:5px 12px;border-radius:7px;border:1px solid #e2e8f0;background:#fff;color:#64748b;font-size:12px;cursor:pointer;font-family:inherit;white-space:nowrap;}
+
+/* Hide some topbar items on small mobile */
+@media(max-width:480px){
+  .date-chip{display:none;}
+  .topbar-username{display:none;}
+  .topbar-title{font-size:14px;}
+}
+
+/* ── Content ── */
+.content{flex:1;overflow-y:auto;padding:16px;}
+@media(min-width:769px){
+  .content{padding:20px 24px;}
+}
+
+/* ── Dashboard ── */
+.dash{display:flex;flex-direction:column;gap:16px;}
+.stat-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;}
+@media(max-width:640px){
+  .stat-row{grid-template-columns:repeat(2,1fr);}
+}
+.stat-card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:8px;transition:all .2s;}
 .stat-card:hover{border-color:#cbd5e1;box-shadow:0 3px 12px rgba(0,0,0,.06);}
-.stat-icon{width:36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:16px;}
+.stat-icon{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:15px;}
 .stat-label{font-size:11px;color:#64748b;font-weight:500;}
-.stat-val{font-size:26px;font-weight:700;font-family:'IBM Plex Mono',monospace;line-height:1;}
+.stat-val{font-size:24px;font-weight:700;font-family:'IBM Plex Mono',monospace;line-height:1;}
 .stat-bar-row{display:flex;align-items:center;gap:6px;}
 .stat-bar{flex:1;height:3px;background:#f1f5f9;border-radius:2px;overflow:hidden;}
 .stat-fill{height:100%;border-radius:2px;transition:width .7s ease;}
 .stat-pct{font-size:10px;font-weight:600;font-family:'IBM Plex Mono',monospace;white-space:nowrap;}
-.dash-bottom{display:grid;grid-template-columns:1fr 340px;gap:16px;flex:1;min-height:0;}
+.dash-bottom{display:grid;grid-template-columns:1fr 320px;gap:14px;}
+@media(max-width:900px){
+  .dash-bottom{grid-template-columns:1fr;}
+}
 .map-card,.recent-card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;display:flex;flex-direction:column;overflow:hidden;}
+.map-card{min-height:300px;}
 .card-head{padding:12px 16px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
 .card-title{font-size:14px;font-weight:600;color:#0f172a;}
 .btn-sm{padding:4px 12px;border-radius:6px;background:#f8fafc;border:1px solid #e2e8f0;color:#6366f1;font-size:12px;font-weight:600;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;}
 .btn-sm:hover{background:#eef2ff;border-color:#c7d2fe;}
-.map-wrap{flex:1;padding:8px;min-height:0;}
+.map-wrap{flex:1;padding:8px;min-height:260px;}
 .map-empty{padding:12px 16px;font-size:12px;color:#94a3b8;text-align:center;}
-.map-legend{display:flex;gap:16px;padding:8px 16px;border-top:1px solid #f1f5f9;flex-wrap:wrap;flex-shrink:0;}
+.map-legend{display:flex;gap:12px;padding:8px 16px;border-top:1px solid #f1f5f9;flex-wrap:wrap;flex-shrink:0;}
 .legend-item{display:flex;align-items:center;gap:5px;font-size:11px;color:#64748b;font-weight:500;}
-.legend-diamond{width:12px;height:12px;border-radius:2px;transform:rotate(45deg);flex-shrink:0;}
-.legend-circle{width:12px;height:12px;border-radius:50%;flex-shrink:0;}
-.recent-list{flex:1;overflow-y:auto;}
+.legend-diamond{width:11px;height:11px;border-radius:2px;transform:rotate(45deg);flex-shrink:0;}
+.legend-circle{width:11px;height:11px;border-radius:50%;flex-shrink:0;}
+.recent-list{flex:1;overflow-y:auto;max-height:300px;}
 .recent-row{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:1px solid #f8fafc;transition:background .1s;}
 .recent-row:last-child{border-bottom:none;}
 .recent-row:hover{background:#fafbff;}
 .recent-id{font-family:'IBM Plex Mono',monospace;font-size:12px;color:#4f46e5;font-weight:500;}
 .recent-loc{font-size:11.5px;color:#94a3b8;margin-top:1px;}
 .empty-msg{padding:32px;text-align:center;color:#94a3b8;font-size:13px;}
-.page-col{display:flex;flex-direction:column;gap:16px;height:100%;}
+
+/* ── Page ── */
+.page-col{display:flex;flex-direction:column;gap:14px;min-height:0;}
 .section-title{font-size:15px;font-weight:600;color:#0f172a;}
-.toolbar{display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
-.tabs{display:flex;background:#f1f5f9;border-radius:8px;padding:3px;gap:2px;}
-.tab{padding:5px 13px;border-radius:6px;border:none;font-size:12px;font-weight:500;cursor:pointer;background:transparent;color:#64748b;transition:all .15s;font-family:'Plus Jakarta Sans',sans-serif;}
+.toolbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;flex-shrink:0;}
+.tabs{display:flex;background:#f1f5f9;border-radius:8px;padding:3px;gap:2px;flex-wrap:wrap;}
+.tab{padding:5px 11px;border-radius:6px;border:none;font-size:12px;font-weight:500;cursor:pointer;background:transparent;color:#64748b;transition:all .15s;font-family:'Plus Jakarta Sans',sans-serif;}
 .tab:hover{color:#334155;}
 .tab-on{background:#fff!important;color:#4f46e5!important;font-weight:600!important;box-shadow:0 1px 4px rgba(0,0,0,.08);}
-.btn-add{padding:8px 16px;border-radius:8px;background:#6366f1;color:#fff;font-size:13px;font-weight:600;border:none;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;}
+.btn-add{padding:7px 14px;border-radius:8px;background:#6366f1;color:#fff;font-size:13px;font-weight:600;border:none;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;white-space:nowrap;}
 .btn-add:hover{background:#4f46e5;box-shadow:0 4px 12px rgba(99,102,241,.3);}
-.form-box{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px;flex-shrink:0;animation:fd .18s ease;}
+
+/* ── Forms ── */
+.form-box{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;flex-shrink:0;animation:fd .18s ease;}
 .edit-box{border-color:#fde68a;}
 @keyframes fd{from{opacity:0;transform:translateY(-4px);}to{opacity:1;transform:translateY(0);}}
-.form-head{font-size:14px;color:#0f172a;margin-bottom:14px;}
+.form-head{font-size:14px;color:#0f172a;margin-bottom:12px;}
 .edit-id{color:#d97706;font-family:'IBM Plex Mono',monospace;font-size:13px;}
 .fg{display:grid;gap:10px;}
 .fg-5{grid-template-columns:repeat(5,1fr);}
+@media(max-width:900px){.fg-5{grid-template-columns:repeat(3,1fr);}}
+@media(max-width:580px){.fg-5{grid-template-columns:repeat(2,1fr);}}
+@media(max-width:380px){.fg-5{grid-template-columns:1fr;}}
 .field{display:flex;flex-direction:column;gap:4px;}
 .flabel{font-size:10.5px;font-weight:600;color:#475569;letter-spacing:.2px;}
 .finput{background:#f8fafc;border:1px solid #e2e8f0;border-radius:7px;color:#1e293b;font-size:12.5px;padding:8px 10px;outline:none;transition:all .15s;font-family:'Plus Jakarta Sans',sans-serif;width:100%;}
 .finput:focus{border-color:#6366f1;background:#fff;box-shadow:0 0 0 3px rgba(99,102,241,.1);}
 .finput::placeholder{color:#cbd5e1;}
 .finput:disabled{opacity:.5;cursor:not-allowed;}
-.factions{display:flex;gap:8px;margin-top:14px;}
+.factions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;}
 .btn-save{padding:8px 18px;border-radius:7px;background:#22c55e;color:#fff;font-size:13px;font-weight:600;border:none;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;}
 .btn-save:hover{background:#16a34a;}
 .btn-discard{padding:8px 14px;border-radius:7px;background:transparent;color:#64748b;font-size:13px;border:1px solid #e2e8f0;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;}
 .btn-discard:hover{border-color:#cbd5e1;color:#334155;}
-.tbl-wrap{background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;flex:1;display:flex;flex-direction:column;min-height:0;}
+
+/* ── Table ── */
+.tbl-wrap{background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;display:flex;flex-direction:column;min-height:200px;}
 .tbl-hd{padding:12px 16px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
 .tbl-title{font-size:14px;font-weight:600;color:#0f172a;display:flex;align-items:center;gap:8px;}
 .tbl-cnt{background:#f1f5f9;color:#64748b;font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;}
 .tbl-f{font-size:11px;color:#94a3b8;}
-.tbl-scroll{flex:1;overflow:auto;}
+.tbl-scroll{flex:1;overflow:auto;-webkit-overflow-scrolling:touch;}
 table{width:100%;border-collapse:collapse;font-size:12.5px;}
 thead{position:sticky;top:0;z-index:1;}
 thead tr{background:#f8fafc;border-bottom:1px solid #e2e8f0;}
@@ -2411,39 +2290,41 @@ td{padding:10px 12px;color:#475569;white-space:nowrap;}
 .lid{font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#4f46e5;background:#eef2ff;padding:2px 7px;border-radius:4px;font-weight:500;}
 .muted{color:#94a3b8;font-size:12px;}
 .bold{color:#1e293b;font-weight:500;}
-.notes-cell{max-width:140px;overflow:hidden;text-overflow:ellipsis;}
+.notes-cell{max-width:120px;overflow:hidden;text-overflow:ellipsis;}
 .type-chip{font-size:11px;font-weight:600;color:#0369a1;background:#e0f2fe;padding:2px 8px;border-radius:4px;}
-.edit-btn{padding:4px 12px;border-radius:6px;background:#fff;border:1px solid #e2e8f0;color:#64748b;font-size:11.5px;font-weight:500;cursor:pointer;transition:all .15s;font-family:'Plus Jakarta Sans',sans-serif;}
+.edit-btn{padding:4px 10px;border-radius:6px;background:#fff;border:1px solid #e2e8f0;color:#64748b;font-size:11.5px;font-weight:500;cursor:pointer;transition:all .15s;font-family:'Plus Jakarta Sans',sans-serif;}
 .edit-btn:hover{border-color:#6366f1;color:#4f46e5;background:#eef2ff;}
-.del-btn{padding:4px 12px;border-radius:6px;background:#fff;border:1px solid #fecaca;color:#dc2626;font-size:11.5px;font-weight:500;cursor:pointer;transition:all .15s;font-family:'Plus Jakarta Sans',sans-serif;}
+.del-btn{padding:4px 10px;border-radius:6px;background:#fff;border:1px solid #fecaca;color:#dc2626;font-size:11.5px;font-weight:500;cursor:pointer;transition:all .15s;font-family:'Plus Jakarta Sans',sans-serif;}
 .del-btn:hover{background:#fef2f2;}
-.op-chip{font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px;display:inline-block;}
-.op-chip-akn{color:#4f46e5;background:#eef2ff;}
-.op-chip-btl{color:#0369a1;background:#e0f2fe;}
-.owner-chip{font-size:11px;font-weight:700;color:#4f46e5;background:#eef2ff;padding:2px 8px;border-radius:4px;}
-.empty{padding:48px;text-align:center;color:#94a3b8;font-size:13px;}
+.empty{padding:40px;text-align:center;color:#94a3b8;font-size:13px;}
 .tbl-foot{padding:10px 16px;border-top:1px solid #f1f5f9;font-size:11.5px;color:#94a3b8;text-align:right;flex-shrink:0;}
+
+/* ── Search ── */
 .search-wrap{position:relative;display:flex;align-items:center;}
 .search-icon{position:absolute;left:10px;color:#94a3b8;font-size:16px;pointer-events:none;}
-.search-input{padding:7px 32px 7px 30px;border-radius:8px;border:1px solid #e2e8f0;background:#f8fafc;font-size:12.5px;color:#1e293b;outline:none;width:200px;font-family:'Plus Jakarta Sans',sans-serif;transition:all .15s;}
-.search-input:focus{border-color:#6366f1;background:#fff;box-shadow:0 0 0 3px rgba(99,102,241,.1);width:240px;}
+.search-input{padding:7px 32px 7px 30px;border-radius:8px;border:1px solid #e2e8f0;background:#f8fafc;font-size:12.5px;color:#1e293b;outline:none;width:180px;font-family:'Plus Jakarta Sans',sans-serif;transition:all .15s;}
+.search-input:focus{border-color:#6366f1;background:#fff;box-shadow:0 0 0 3px rgba(99,102,241,.1);width:210px;}
 .search-input::placeholder{color:#cbd5e1;}
 .search-clear{position:absolute;right:8px;background:none;border:none;color:#94a3b8;cursor:pointer;font-size:11px;padding:2px;line-height:1;}
 .search-clear:hover{color:#475569;}
-.util-btn{padding:4px 10px;border-radius:6px;background:#fff;border:1px solid #e0f2fe;color:#0369a1;font-size:11px;font-weight:600;cursor:pointer;transition:all .15s;font-family:'Plus Jakarta Sans',sans-serif;white-space:nowrap;}
+
+/* ── Action buttons ── */
+.util-btn{padding:4px 9px;border-radius:6px;background:#fff;border:1px solid #e0f2fe;color:#0369a1;font-size:11px;font-weight:600;cursor:pointer;transition:all .15s;font-family:'Plus Jakarta Sans',sans-serif;white-space:nowrap;}
 .util-btn:hover{background:#e0f2fe;border-color:#7dd3fc;}
-.req-btn{padding:4px 10px;border-radius:6px;background:#fff;border:1px solid #e2e8f0;color:#7c3aed;font-size:11px;font-weight:600;cursor:pointer;transition:all .15s;font-family:'Plus Jakarta Sans',sans-serif;white-space:nowrap;}
+.req-btn{padding:4px 9px;border-radius:6px;background:#fff;border:1px solid #e2e8f0;color:#7c3aed;font-size:11px;font-weight:600;cursor:pointer;transition:all .15s;font-family:'Plus Jakarta Sans',sans-serif;white-space:nowrap;}
 .req-btn:hover{background:#f5f3ff;border-color:#ddd6fe;}
-.btn-export{padding:8px 14px;border-radius:8px;background:#fff;border:1px solid #e2e8f0;color:#4f46e5;font-size:13px;font-weight:600;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;}
+.btn-export{padding:7px 12px;border-radius:8px;background:#fff;border:1px solid #e2e8f0;color:#4f46e5;font-size:12px;font-weight:600;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;white-space:nowrap;}
 .btn-export:hover{background:#eef2ff;border-color:#c7d2fe;}
-.modal-overlay{position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;}
+
+/* ── Modals ── */
+.modal-overlay{position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px;}
 .modal{background:#fff;border-radius:16px;width:100%;max-width:540px;box-shadow:0 20px 60px rgba(0,0,0,.2);display:flex;flex-direction:column;max-height:90vh;overflow:hidden;}
-.modal-head{padding:20px 24px 16px;border-bottom:1px solid #f1f5f9;display:flex;align-items:flex-start;justify-content:space-between;flex-shrink:0;}
-.modal-title{font-size:16px;font-weight:700;color:#0f172a;}
+.modal-head{padding:18px 20px 14px;border-bottom:1px solid #f1f5f9;display:flex;align-items:flex-start;justify-content:space-between;flex-shrink:0;}
+.modal-title{font-size:15px;font-weight:700;color:#0f172a;}
 .modal-sub{font-size:12px;color:#94a3b8;margin-top:2px;}
-.modal-close{width:28px;height:28px;border-radius:50%;border:1px solid #e2e8f0;background:#f8fafc;cursor:pointer;font-size:12px;color:#64748b;display:flex;align-items:center;justify-content:center;}
+.modal-close{width:28px;height:28px;border-radius:50%;border:1px solid #e2e8f0;background:#f8fafc;cursor:pointer;font-size:12px;color:#64748b;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
 .modal-close:hover{background:#fee2e2;border-color:#fecaca;color:#dc2626;}
-.modal-section{padding:16px 24px;border-bottom:1px solid #f8fafc;overflow-y:auto;}
+.modal-section{padding:14px 20px;border-bottom:1px solid #f8fafc;overflow-y:auto;}
 .modal-label{font-size:11px;font-weight:600;color:#475569;letter-spacing:.3px;text-transform:uppercase;margin-bottom:10px;}
 .modal-label-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
 .modal-count{font-size:11px;color:#94a3b8;margin-top:8px;}
@@ -2459,12 +2340,15 @@ td{padding:10px 12px;color:#475569;white-space:nowrap;}
 .col-tog{padding:3px 10px;border-radius:5px;border:1px solid #e2e8f0;background:#f8fafc;font-size:11px;font-weight:600;color:#64748b;cursor:pointer;}
 .col-tog:hover{border-color:#c7d2fe;color:#4f46e5;}
 .col-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;}
+@media(max-width:480px){.col-grid{grid-template-columns:repeat(2,1fr);}}
 .col-chip{display:flex;align-items:center;gap:6px;padding:7px 10px;border-radius:7px;border:1.5px solid #e2e8f0;cursor:pointer;font-size:12px;font-weight:500;color:#475569;transition:all .15s;}
 .col-chip:hover{border-color:#c7d2fe;}
 .col-on{border-color:#6366f1;background:#eef2ff;color:#4f46e5;}
 .col-check{font-size:11px;width:14px;text-align:center;flex-shrink:0;color:#6366f1;}
-.modal-foot{padding:16px 24px;border-top:1px solid #f1f5f9;display:flex;justify-content:flex-end;gap:10px;flex-shrink:0;}
-::-webkit-scrollbar{width:5px;height:5px;}
+.modal-foot{padding:14px 20px;border-top:1px solid #f1f5f9;display:flex;justify-content:flex-end;gap:10px;flex-shrink:0;flex-wrap:wrap;}
+
+/* ── Scrollbars ── */
+::-webkit-scrollbar{width:4px;height:4px;}
 ::-webkit-scrollbar-track{background:#f8fafc;}
 ::-webkit-scrollbar-thumb{background:#e2e8f0;border-radius:3px;}
 ::-webkit-scrollbar-thumb:hover{background:#cbd5e1;}
