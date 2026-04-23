@@ -211,6 +211,39 @@ function Dashboard({ links, pops, setPage }) {
     { label:"Cancelled",   value:cancelled, color:"#dc2626", light:"#fef2f2", border:"#fecaca" },
   ];
 
+  // ─── Capacity calculations ────────────────────────────────────
+  // Only count ACTIVE links for capacity
+  const activeLinks = links.filter(l => l.status?.toUpperCase() === "ACTIVE");
+
+  const sumMbps = (arr) => arr.reduce((s, l) => s + (Number(l.quantity_mbps) || 0), 0);
+
+  const fmtMbps = (mbps) => {
+    if (!mbps) return "0 Mbps";
+    if (mbps >= 1000) return `${(mbps/1000).toFixed(2)} Gbps`;
+    return `${mbps} Mbps`;
+  };
+
+  const totalCap = sumMbps(activeLinks);
+  const aknLinks = activeLinks.filter(l => l.owner?.toUpperCase() === "AKN");
+  const btlLinks = activeLinks.filter(l => l.owner?.toUpperCase() === "BTL");
+
+  // Group by link type for each owner
+  const byType = (arr) => {
+    const groups = {};
+    arr.forEach(l => {
+      const t = l.type || "Other";
+      if (!groups[t]) groups[t] = { count: 0, mbps: 0 };
+      groups[t].count += 1;
+      groups[t].mbps  += Number(l.quantity_mbps) || 0;
+    });
+    return Object.entries(groups).sort((a,b) => b[1].mbps - a[1].mbps);
+  };
+
+  const aknByType = byType(aknLinks);
+  const btlByType = byType(btlLinks);
+  const aknTotal  = sumMbps(aknLinks);
+  const btlTotal  = sumMbps(btlLinks);
+
   return (
     <div className="dash">
       <div className="stat-row">
@@ -229,7 +262,8 @@ function Dashboard({ links, pops, setPage }) {
         ))}
       </div>
 
-      <div className="dash-bottom">
+      <div className="dash-bottom-3col">
+        {/* SEGMENT 1: MAP */}
         <div className="map-card">
           <div className="card-head">
             <span className="card-title">POP Locations</span>
@@ -245,10 +279,73 @@ function Dashboard({ links, pops, setPage }) {
             <div className="legend-item"><div className="legend-circle" style={{background:"#16a34a"}}></div><span>BTL POP</span></div>
           </div>
           {pops.length===0 && (
-            <div className="map-empty">No POPs added yet. Go to Network › POPs to add locations.</div>
+            <div className="map-empty">No POPs added yet.</div>
           )}
         </div>
 
+        {/* SEGMENT 2: LINK CAPACITY */}
+        <div className="capacity-card">
+          <div className="card-head">
+            <span className="card-title">Link Capacity</span>
+            <span style={{fontSize:11,color:"#94a3b8",fontWeight:500}}>Active Only</span>
+          </div>
+          <div className="cap-scroll">
+            {/* Total */}
+            <div className="cap-total-box">
+              <div style={{fontSize:11,color:"#64748b",fontWeight:600,letterSpacing:.4,textTransform:"uppercase",marginBottom:4}}>Total Capacity</div>
+              <div style={{fontSize:24,fontWeight:700,color:"#4f46e5",fontFamily:"'IBM Plex Mono',monospace",lineHeight:1}}>{fmtMbps(totalCap)}</div>
+              <div style={{fontSize:11,color:"#94a3b8",marginTop:4}}>{activeLinks.length} active link{activeLinks.length!==1?"s":""}</div>
+            </div>
+
+            {/* AKN section */}
+            <div className="cap-owner-box" style={{borderColor:"#bfdbfe"}}>
+              <div className="cap-owner-head">
+                <span className="cap-owner-tag" style={{background:"#dbeafe",color:"#2563eb"}}>AKN</span>
+                <span className="cap-owner-total" style={{color:"#2563eb"}}>{fmtMbps(aknTotal)}</span>
+              </div>
+              <div className="cap-owner-sub">{aknLinks.length} link{aknLinks.length!==1?"s":""} • {totalCap?Math.round(aknTotal/totalCap*100):0}% of total</div>
+              {aknByType.length === 0 ? (
+                <div className="cap-empty">No active AKN links</div>
+              ) : aknByType.map(([type, d]) => {
+                const pct = aknTotal ? Math.round(d.mbps / aknTotal * 100) : 0;
+                return (
+                  <div key={type} className="cap-type-row">
+                    <div className="cap-type-line">
+                      <span className="cap-type-name">{type}</span>
+                      <span className="cap-type-val">{fmtMbps(d.mbps)} <span style={{color:"#94a3b8",fontWeight:500}}>({d.count})</span></span>
+                    </div>
+                    <div className="cap-bar"><div className="cap-bar-fill" style={{width:`${pct}%`,background:"#2563eb"}}></div></div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* BTL section */}
+            <div className="cap-owner-box" style={{borderColor:"#bbf7d0"}}>
+              <div className="cap-owner-head">
+                <span className="cap-owner-tag" style={{background:"#dcfce7",color:"#16a34a"}}>BTL</span>
+                <span className="cap-owner-total" style={{color:"#16a34a"}}>{fmtMbps(btlTotal)}</span>
+              </div>
+              <div className="cap-owner-sub">{btlLinks.length} link{btlLinks.length!==1?"s":""} • {totalCap?Math.round(btlTotal/totalCap*100):0}% of total</div>
+              {btlByType.length === 0 ? (
+                <div className="cap-empty">No active BTL links</div>
+              ) : btlByType.map(([type, d]) => {
+                const pct = btlTotal ? Math.round(d.mbps / btlTotal * 100) : 0;
+                return (
+                  <div key={type} className="cap-type-row">
+                    <div className="cap-type-line">
+                      <span className="cap-type-name">{type}</span>
+                      <span className="cap-type-val">{fmtMbps(d.mbps)} <span style={{color:"#94a3b8",fontWeight:500}}>({d.count})</span></span>
+                    </div>
+                    <div className="cap-bar"><div className="cap-bar-fill" style={{width:`${pct}%`,background:"#16a34a"}}></div></div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* SEGMENT 3: RECENT LINKS */}
         <div className="recent-card">
           <div className="card-head">
             <span className="card-title">Recent Links</span>
@@ -479,7 +576,7 @@ function LinksPage({ links, fetchLinks, pops, utils, fetchUtils, requests, fetch
       </div>
 
       {showExport && <ExportModal
-        data={links.map(l => ({
+        data={filtered.map(l => ({
           ...l,
           max_usage:          utilMap[l.id]?.max_util_mbps ?? null,
           capacity_gap:       (l.quantity_mbps && utilMap[l.id]) ? (l.quantity_mbps - utilMap[l.id].max_util_mbps).toFixed(1) : null,
@@ -488,6 +585,9 @@ function LinksPage({ links, fetchLinks, pops, utils, fetchUtils, requests, fetch
         }))}
         allCols={LINK_COLS} title="Links"
         filterField="status" filterOptions={["ACTIVE","PENDING","CANCELLED","AKN","BTL"]}
+        searchTerm={search}
+        activeFilter={filter}
+        totalCount={links.length}
         onClose={()=>setShowExport(false)} />}
 
       {/* ADD FORM */}
@@ -772,8 +872,11 @@ function POPsPage({ pops, fetchPops }) {
         </div>
       </div>
 
-      {showExport && <ExportModal data={pops} allCols={POP_COLS} title="POPs"
+      {showExport && <ExportModal data={filteredPOPs} allCols={POP_COLS} title="POPs"
         filterField="operator" filterOptions={["AKN","BTL"]}
+        searchTerm={search}
+        activeFilter={filterOp}
+        totalCount={pops.length}
         onClose={()=>setShowExport(false)} />}
 
       {showForm && (
@@ -1874,7 +1977,7 @@ const POP_COLS = [
   { key:"notes",    label:"Notes" },
 ];
 
-function ExportModal({ data, allCols, title, filterField, filterOptions, onClose }) {
+function ExportModal({ data, allCols, title, filterField, filterOptions, searchTerm, activeFilter, totalCount, onClose }) {
   const [selectedCols, setSelectedCols] = useState(allCols.map(c=>c.key));
   const [filterVal, setFilterVal]       = useState("ALL");
   const [fmt, setFmt]                   = useState("excel");
@@ -1899,41 +2002,83 @@ function ExportModal({ data, allCols, title, filterField, filterOptions, onClose
         return v == null ? "" : String(v).replace(/"/g,'""');
       })
     );
+
     const csvRows = [
       activeCols.map(c=>c.label).join(","),
       ...rows.map(r => r.map(v => `"${v}"`).join(","))
     ].join("\n");
+
     const blob = new Blob([csvRows], { type:"text/csv;charset=utf-8;" });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement("a");
     a.href     = url;
-    a.download = `${title.toLowerCase().replace(/\s+/g,"_")}_export_${new Date().toISOString().slice(0,10)}.csv`;
+    const suffix = searchTerm ? `_search-${searchTerm.replace(/\s+/g,"-")}` : "";
+    a.download = `${title.toLowerCase().replace(/\s+/g,"_")}_export${suffix}_${new Date().toISOString().slice(0,10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
-  const exportWord = () => {
+  const buildHTML = (forPrint=false) => {
     const tableRows = [
-      `<tr>${activeCols.map(c=>`<th style="background:#4f46e5;color:#fff;padding:8px 12px;font-family:Arial;font-size:11pt;border:1px solid #c7d2fe;">${c.label}</th>`).join("")}</tr>`,
+      `<tr>${activeCols.map(c=>`<th style="background:#4f46e5;color:#fff;padding:8px 12px;font-family:Arial;font-size:11pt;border:1px solid #c7d2fe;text-align:left;">${c.label}</th>`).join("")}</tr>`,
       ...filteredData.map((r,i) =>
         `<tr style="background:${i%2===0?"#ffffff":"#f8fafc"};">${
           activeCols.map(c=>`<td style="padding:7px 12px;font-family:Arial;font-size:10pt;border:1px solid #e2e8f0;">${r[c.key]??""}</td>`).join("")
         }</tr>`
       )
     ].join("");
-    const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>${title} Export</title><style>body{font-family:Arial,sans-serif;margin:20px;}h2{color:#0f172a;font-size:14pt;margin-bottom:4px;}p{color:#64748b;font-size:10pt;margin-bottom:16px;}table{border-collapse:collapse;width:100%;}</style></head><body><h2>${title} Export</h2><p>Generated: ${new Date().toLocaleString()} | Filter: ${filterVal} | Total rows: ${filteredData.length}</p><table>${tableRows}</table></body></html>`;
-    const blob = new Blob([html], { type:"application/msword" });
+
+    const filterInfo = [
+      searchTerm && `Search: "${searchTerm}"`,
+      activeFilter && activeFilter !== "ALL" && `Tab: ${activeFilter}`,
+      filterVal !== "ALL" && `Filter: ${filterVal}`,
+    ].filter(Boolean).join(" | ") || "No filter";
+
+    return `
+<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+<head><meta charset="utf-8"><title>${title} Export</title>
+<style>
+  body { font-family: Arial, sans-serif; margin: 20px; }
+  h2   { color: #0f172a; font-size: 14pt; margin-bottom: 4px; }
+  p    { color: #64748b; font-size: 10pt; margin-bottom: 16px; }
+  table{ border-collapse: collapse; width: 100%; }
+  ${forPrint ? "@media print { @page { size: landscape; margin: 10mm; } body { margin: 0; } }" : ""}
+</style></head>
+<body>
+<h2>${title} Export</h2>
+<p>Generated: ${new Date().toLocaleString()} &nbsp;|&nbsp; ${filterInfo} &nbsp;|&nbsp; Rows: ${filteredData.length}${totalCount?` of ${totalCount}`:""}</p>
+<table>${tableRows}</table>
+${forPrint ? "<script>window.onload=()=>{window.print();}</script>" : ""}
+</body></html>`;
+  };
+
+  const exportWord = () => {
+    const blob = new Blob([buildHTML(false)], { type:"application/msword" });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement("a");
     a.href     = url;
-    a.download = `${title.toLowerCase().replace(/\s+/g,"_")}_export_${new Date().toISOString().slice(0,10)}.doc`;
+    const suffix = searchTerm ? `_search-${searchTerm.replace(/\s+/g,"-")}` : "";
+    a.download = `${title.toLowerCase().replace(/\s+/g,"_")}_export${suffix}_${new Date().toISOString().slice(0,10)}.doc`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
+  const printNow = () => {
+    const w = window.open("", "_blank", "width=1200,height=800");
+    if (!w) { alert("Please allow popups to print."); return; }
+    w.document.write(buildHTML(true));
+    w.document.close();
+  };
+
+  // Build context banner showing what's being exported
+  const contextChips = [];
+  if (searchTerm) contextChips.push({label:`Search: "${searchTerm}"`, color:"#4f46e5", bg:"#eef2ff"});
+  if (activeFilter && activeFilter !== "ALL") contextChips.push({label:`Tab: ${activeFilter}`, color:"#0369a1", bg:"#e0f2fe"});
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={e=>e.stopPropagation()}>
+
         <div className="modal-head">
           <div>
             <div className="modal-title">Export {title}</div>
@@ -1942,12 +2087,26 @@ function ExportModal({ data, allCols, title, filterField, filterOptions, onClose
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
 
+        {/* Context banner */}
+        {(contextChips.length > 0 || (totalCount && totalCount !== data.length)) && (
+          <div style={{padding:"10px 24px",background:"#fffbeb",borderBottom:"1px solid #fde68a",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+            <span style={{fontSize:11,fontWeight:700,color:"#b45309",letterSpacing:.3}}>EXPORTING:</span>
+            {contextChips.map((c,i)=>(
+              <span key={i} style={{fontSize:11,fontWeight:600,padding:"2px 8px",borderRadius:4,background:c.bg,color:c.color}}>{c.label}</span>
+            ))}
+            <span style={{fontSize:11,color:"#92400e",marginLeft:"auto"}}>
+              {data.length}{totalCount ? ` of ${totalCount} total` : ""} rows in current view
+            </span>
+          </div>
+        )}
+
         <div className="modal-section">
           <div className="modal-label">Format</div>
           <div className="fmt-row">
             {[
               { id:"excel", icon:"📊", label:"Excel (.csv)", sub:"Opens in Excel / Sheets" },
               { id:"word",  icon:"📄", label:"Word (.doc)",  sub:"Opens in Word" },
+              { id:"print", icon:"🖨️", label:"Print",        sub:"Send directly to printer" },
             ].map(f=>(
               <div key={f.id} className={`fmt-card ${fmt===f.id?"fmt-on":""}`} onClick={()=>setFmt(f.id)}>
                 <span className="fmt-icon">{f.icon}</span>
@@ -1962,13 +2121,13 @@ function ExportModal({ data, allCols, title, filterField, filterOptions, onClose
         </div>
 
         <div className="modal-section">
-          <div className="modal-label">Filter rows</div>
+          <div className="modal-label">Filter rows (additional)</div>
           <div className="filter-row">
             {["ALL",...filterOptions].map(opt=>(
               <button key={opt} className={`tab ${filterVal===opt?"tab-on":""}`} onClick={()=>setFilterVal(opt)}>{opt}</button>
             ))}
           </div>
-          <div className="modal-count">{filteredData.length} rows will be exported</div>
+          <div className="modal-count">{filteredData.length} rows will be {fmt==="print" ? "printed" : "exported"}</div>
         </div>
 
         <div className="modal-section">
@@ -1992,11 +2151,12 @@ function ExportModal({ data, allCols, title, filterField, filterOptions, onClose
         <div className="modal-foot">
           <button className="btn-discard" onClick={onClose}>Cancel</button>
           <button className="btn-save" disabled={selectedCols.length===0||filteredData.length===0}
-            onClick={fmt==="excel"?exportExcel:exportWord}
+            onClick={fmt==="excel" ? exportExcel : fmt==="word" ? exportWord : printNow}
             style={{opacity:selectedCols.length===0||filteredData.length===0?0.5:1}}>
-            ↓ Download {fmt==="excel"?"Excel":"Word"}
+            {fmt==="print" ? "🖨️ Print Now" : `↓ Download ${fmt==="excel"?"Excel":"Word"}`}
           </button>
         </div>
+
       </div>
     </div>
   );
@@ -2212,6 +2372,22 @@ body{font-family:'Plus Jakarta Sans',sans-serif;color:#1e293b;background:#f1f5f9
 .stat-fill{height:100%;border-radius:2px;transition:width .7s ease;}
 .stat-pct{font-size:10px;font-weight:600;font-family:'IBM Plex Mono',monospace;white-space:nowrap;}
 .dash-bottom{display:grid;grid-template-columns:1fr 320px;gap:14px;}
+.dash-bottom-3col{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr) minmax(0,1fr);gap:14px;flex:1;min-height:0;}
+.capacity-card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;display:flex;flex-direction:column;overflow:hidden;}
+.cap-scroll{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px;}
+.cap-total-box{background:linear-gradient(135deg,#eef2ff,#f5f3ff);border:1px solid #c7d2fe;border-radius:9px;padding:12px 14px;}
+.cap-owner-box{background:#fff;border:1.5px solid #e2e8f0;border-radius:9px;padding:11px 13px;}
+.cap-owner-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;}
+.cap-owner-tag{font-size:11px;font-weight:700;padding:2px 9px;border-radius:5px;letter-spacing:.4px;}
+.cap-owner-total{font-size:15px;font-weight:700;font-family:'IBM Plex Mono',monospace;}
+.cap-owner-sub{font-size:10.5px;color:#94a3b8;margin-bottom:9px;font-weight:500;}
+.cap-type-row{margin-top:7px;}
+.cap-type-line{display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;}
+.cap-type-name{font-size:11.5px;color:#475569;font-weight:600;}
+.cap-type-val{font-size:11px;color:#0f172a;font-weight:600;font-family:'IBM Plex Mono',monospace;}
+.cap-bar{height:5px;background:#f1f5f9;border-radius:3px;overflow:hidden;}
+.cap-bar-fill{height:100%;border-radius:3px;transition:width .4s ease;}
+.cap-empty{font-size:11px;color:#94a3b8;text-align:center;padding:8px;font-style:italic;}
 @media(max-width:900px){
   .dash-bottom{grid-template-columns:1fr;}
 }
