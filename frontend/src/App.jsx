@@ -52,6 +52,13 @@ function MainApp({ user, onLogout }) {
   const [requests, setRequests] = useState([]);
   const [kams,     setKams]     = useState([]);
   const [partners, setPartners] = useState([]);
+  const [pendingLinkAction, setPendingLinkAction] = useState(null); // {linkId, action:'usage'|'upgrade'|'downgrade'}
+
+  // helper: trigger from dashboard → opens modal on Links page
+  const openLinkAction = (link, action) => {
+    setPendingLinkAction({ linkId: link.id, action });
+    setPage("links");
+  };
 
   // Auto-logout after 30 min
   useEffect(() => {
@@ -176,14 +183,16 @@ function MainApp({ user, onLogout }) {
               <span className="role-badge" style={{background:
                 role==="ADMIN"?"#eef2ff":role==="NOC"?"#f0fdf4":role==="ACCOUNTS"?"#fffbeb":role==="PARTNER"?"#f5f3ff":"#f8fafc",
                 color:role==="ADMIN"?"#4f46e5":role==="NOC"?"#16a34a":role==="ACCOUNTS"?"#b45309":role==="PARTNER"?"#7c3aed":"#64748b"
-              }}>{role}</span>
-              <span className="topbar-username">{user.username}</span>
+              }} title={user.username ? `Logged in as ${user.username}` : ""}>{role}</span>
+              {user.username && user.username.toLowerCase() !== role.toLowerCase() && (
+                <span className="topbar-username">{user.username}</span>
+              )}
               <button onClick={onLogout} className="logout-btn">Logout</button>
             </div>
           </div>
           <div className="content">
-            {page==="dashboard" && <Dashboard links={links} pops={pops} setPage={setPage} />}
-            {page==="links"     && <LinksPage  links={links} fetchLinks={fetchLinks} pops={pops} utils={utils} fetchUtils={fetchUtils} requests={requests} fetchRequests={fetchRequests} partners={partners} user={user} role={role}  hiddenCols={HIDDEN_COLS[role]||[]} />}
+            {page==="dashboard" && <Dashboard links={links} pops={pops} utils={utils} setPage={setPage} openLinkAction={openLinkAction} />}
+            {page==="links"     && <LinksPage  links={links} fetchLinks={fetchLinks} pops={pops} utils={utils} fetchUtils={fetchUtils} requests={requests} fetchRequests={fetchRequests} partners={partners} user={user} role={role}  hiddenCols={HIDDEN_COLS[role]||[]} pendingLinkAction={pendingLinkAction} clearPendingLinkAction={()=>setPendingLinkAction(null)} />}
             {page==="pops"      && can(role,"managePOPs") && <POPsPage pops={pops} fetchPops={fetchPops} />}
             {page==="requests"       && <RequestsPage requests={requests} links={links} fetchRequests={fetchRequests} fetchLinks={fetchLinks} user={user} />}
             {page==="users"          && can(role,"manageUsers") && <UsersPage />}
@@ -198,17 +207,17 @@ function MainApp({ user, onLogout }) {
 }
 
 // ─── Dashboard ────────────────────────────────────────────────────
-function Dashboard({ links, pops, setPage }) {
+function Dashboard({ links, pops, utils, setPage, openLinkAction }) {
   const total     = links.length;
   const active    = links.filter(l=>l.status?.toUpperCase()==="ACTIVE").length;
   const pending   = links.filter(l=>l.status?.toUpperCase()==="PENDING").length;
   const cancelled = links.filter(l=>l.status?.toUpperCase()==="CANCELLED").length;
 
   const stats = [
-    { label:"Total Links", value:total,     color:"#6366f1", light:"#eef2ff", border:"#c7d2fe" },
-    { label:"Active",      value:active,    color:"#16a34a", light:"#f0fdf4", border:"#bbf7d0" },
-    { label:"Pending",     value:pending,   color:"#d97706", light:"#fffbeb", border:"#fde68a" },
-    { label:"Cancelled",   value:cancelled, color:"#dc2626", light:"#fef2f2", border:"#fecaca" },
+    { label:"Total Links", value:total,     color:"#6366f1", light:"#eef2ff", border:"#c7d2fe", filter:"ALL" },
+    { label:"Active",      value:active,    color:"#16a34a", light:"#f0fdf4", border:"#bbf7d0", filter:"ACTIVE" },
+    { label:"Pending",     value:pending,   color:"#d97706", light:"#fffbeb", border:"#fde68a", filter:"PENDING" },
+    { label:"Cancelled",   value:cancelled, color:"#dc2626", light:"#fef2f2", border:"#fecaca", filter:"CANCELLED" },
   ];
 
   // ─── Capacity calculations ────────────────────────────────────
@@ -248,17 +257,25 @@ function Dashboard({ links, pops, setPage }) {
     <div className="dash">
       <div className="stat-row">
         {stats.map(s => (
-          <div key={s.label} className="stat-card" style={{"--ac":s.color,"--lc":s.light,"--bc":s.border}}>
-            <div className="stat-icon" style={{background:s.light,border:`1px solid ${s.border}`}}>
-              <span style={{color:s.color}}>◈</span>
+          <button
+            key={s.label}
+            type="button"
+            className="stat-card stat-btn"
+            onClick={()=>setPage("links")}
+            style={{"--ac":s.color,"--lc":s.light,"--bc":s.border}}
+            title={`Go to ${s.label}`}>
+            <div className="stat-top">
+              <div className="stat-icon-sm" style={{background:s.light,border:`1px solid ${s.border}`}}>
+                <span style={{color:s.color}}>◈</span>
+              </div>
+              <div className="stat-label">{s.label}</div>
             </div>
-            <div className="stat-label">{s.label}</div>
-            <div className="stat-val" style={{color:s.color}}>{s.value}</div>
-            <div className="stat-bar-row">
-              <div className="stat-bar"><div className="stat-fill" style={{width:total?`${Math.round(s.value/total*100)}%`:"0%",background:s.color}}></div></div>
+            <div className="stat-bottom">
+              <div className="stat-val" style={{color:s.color}}>{s.value}</div>
               <span className="stat-pct" style={{color:s.color}}>{total?Math.round(s.value/total*100):0}%</span>
             </div>
-          </div>
+            <div className="stat-bar"><div className="stat-fill" style={{width:total?`${Math.round(s.value/total*100)}%`:"0%",background:s.color}}></div></div>
+          </button>
         ))}
       </div>
 
@@ -345,26 +362,146 @@ function Dashboard({ links, pops, setPage }) {
           </div>
         </div>
 
-        {/* SEGMENT 3: RECENT LINKS */}
-        <div className="recent-card">
-          <div className="card-head">
-            <span className="card-title">Recent Links</span>
-            <button className="btn-sm" onClick={()=>setPage("links")}>View All →</button>
-          </div>
-          <div className="recent-list">
-            {links.length===0 ? (
-              <div className="empty-msg">No links yet.</div>
-            ) : [...links].reverse().slice(0,8).map(l => (
-              <div key={l.id} className="recent-row">
-                <div>
-                  <div className="recent-id">{l.link_id}</div>
-                  <div className="recent-loc">{l.aggregation||"—"} → {l.to_location}</div>
-                </div>
-                <Badge status={l.status} />
-              </div>
-            ))}
-          </div>
+        {/* SEGMENT 3: LINKS NEED ATTENTION */}
+        <LinksNeedAttention links={links} utils={utils} setPage={setPage} openLinkAction={openLinkAction} />
+      </div>
+    </div>
+  );
+}
+
+// ─── Links Need Attention ─────────────────────────────────────────
+const DAYS_STALE_THRESHOLD = 10;
+const UNDER_THRESHOLD = 80;
+const OVER_THRESHOLD  = 95;
+
+function LinksNeedAttention({ links, utils, setPage, openLinkAction }) {
+  const [tab, setTab] = useState("stale");
+
+  const utilMap = React.useMemo(
+    () => Object.fromEntries((utils||[]).map(u => [u.link_id, u])),
+    [utils]
+  );
+
+  const { stale, under, over } = React.useMemo(() => {
+    const now = Date.now();
+    const stale = [], under = [], over = [];
+
+    links.forEach(l => {
+      if (l.status?.toUpperCase() !== "ACTIVE") return;
+
+      const u = utilMap[l.id];
+      const lastUpdate = u?.updated_at ? new Date(u.updated_at).getTime() : null;
+      const daysSince = lastUpdate ? Math.floor((now - lastUpdate) / 86400000) : 9999;
+
+      if (daysSince >= DAYS_STALE_THRESHOLD) {
+        stale.push({ ...l, daysSince, updatedAt: u?.updated_at });
+        return;
+      }
+
+      const cap = Number(l.quantity_mbps);
+      const usage = Number(u?.max_util_mbps);
+      if (!cap || isNaN(usage)) return;
+
+      const pct = (usage / cap) * 100;
+      if (pct > OVER_THRESHOLD)      over.push({ ...l, usagePct: pct, usage, cap });
+      else if (pct < UNDER_THRESHOLD) under.push({ ...l, usagePct: pct, usage, cap });
+    });
+
+    stale.sort((a,b) => b.daysSince - a.daysSince);
+    over.sort((a,b) => b.usagePct - a.usagePct);
+    under.sort((a,b) => a.usagePct - b.usagePct);
+    return { stale, under, over };
+  }, [links, utilMap]);
+
+  const tabs = {
+    stale: { items: stale },
+    over:  { items: over  },
+    under: { items: under },
+  };
+  const activeItems = tabs[tab].items;
+  const totalAttention = stale.length + under.length + over.length;
+
+  const fmt = d => d ? new Date(d).toLocaleDateString("en-GB", {day:"numeric", month:"short"}) : "never";
+
+  return (
+    <div className="attn-card">
+      <div className="attn-head">
+        <div>
+          <div className="attn-title">Links need attention</div>
+          <div className="attn-sub">{totalAttention} total · action required</div>
         </div>
+        <button className="attn-viewall" onClick={()=>setPage("links")}>View all →</button>
+      </div>
+
+      <div className="attn-stats">
+        <div
+          className={`attn-stat attn-stat-stale ${tab==="stale"?"attn-stat-active":""}`}
+          onClick={()=>setTab("stale")}>
+          <div className="attn-stat-num attn-num-stale">{stale.length}</div>
+          <div className="attn-stat-lbl attn-lbl-stale">Stale usage</div>
+        </div>
+        <div
+          className={`attn-stat attn-stat-over ${tab==="over"?"attn-stat-active":""}`}
+          onClick={()=>setTab("over")}>
+          <div className="attn-stat-num attn-num-over">{over.length}</div>
+          <div className="attn-stat-lbl attn-lbl-over">Over {OVER_THRESHOLD}%</div>
+        </div>
+        <div
+          className={`attn-stat attn-stat-under ${tab==="under"?"attn-stat-active":""}`}
+          onClick={()=>setTab("under")}>
+          <div className="attn-stat-num attn-num-under">{under.length}</div>
+          <div className="attn-stat-lbl attn-lbl-under">Under {UNDER_THRESHOLD}%</div>
+        </div>
+      </div>
+
+      <div className="attn-list">
+        {activeItems.length === 0 ? (
+          <div className="attn-empty">Nothing here — all good</div>
+        ) : activeItems.slice(0, 5).map(l => {
+          const u = utilMap[l.id];
+          const lastUpd = u?.updated_at ? new Date(u.updated_at).getTime() : null;
+          const daysSinceUpd = lastUpd ? Math.floor((Date.now() - lastUpd) / 86400000) : null;
+          const updText = daysSinceUpd === null
+            ? "Never updated"
+            : daysSinceUpd === 0
+              ? "Updated today"
+              : `${daysSinceUpd}d ago`;
+
+          let chipClass, chipText, actionLabel, actionType;
+          if (tab === "stale") {
+            chipClass   = "attn-chip-stale";
+            chipText    = l.daysSince >= 9999 ? "Never" : `${l.daysSince}d`;
+            actionLabel = "Update";
+            actionType  = "usage";
+          } else if (tab === "over") {
+            chipClass   = "attn-chip-over";
+            chipText    = `${Math.round(l.usagePct)}%`;
+            actionLabel = "Upgrade";
+            actionType  = "upgrade";
+          } else {
+            chipClass   = "attn-chip-under";
+            chipText    = `${Math.round(l.usagePct)}%`;
+            actionLabel = "Downgrade";
+            actionType  = "downgrade";
+          }
+          const statusLine = updText;
+
+          const route = `${l.aggregation || "—"} → ${l.to_location || "—"}`;
+
+          return (
+            <div key={l.id} className="attn-row">
+              <div className="attn-row-info">
+                <div className="attn-row-route">{route}</div>
+                {l.notes && <div className="attn-row-note">{l.notes}</div>}
+                <div className="attn-row-status">
+                  <span className={`attn-chip ${chipClass}`}>{chipText}</span>
+                  <span className="attn-row-statustxt">{statusLine}</span>
+                </div>
+              </div>
+              <button className="attn-row-btn" onClick={()=>openLinkAction ? openLinkAction(l, actionType) : setPage("links")}>{actionLabel}</button>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -463,7 +600,7 @@ function POPMap({ pops }) {
 }
 
 // ─── Links Page ───────────────────────────────────────────────────
-function LinksPage({ links, fetchLinks, pops, utils, fetchUtils, requests, fetchRequests, partners, user, role, hiddenCols=[] }) {
+function LinksPage({ links, fetchLinks, pops, utils, fetchUtils, requests, fetchRequests, partners, user, role, hiddenCols=[], pendingLinkAction, clearPendingLinkAction }) {
   const [filter, setFilter]             = useState("ALL");
   const [showForm, setShowForm]         = useState(false);
   const [editingLink, setEditingLink]   = useState(null);
@@ -473,8 +610,26 @@ function LinksPage({ links, fetchLinks, pops, utils, fetchUtils, requests, fetch
   const [search, setSearch]             = useState("");
   const [utilModal, setUtilModal]       = useState(null);
   const [reqModal,  setReqModal]        = useState(null);
+  const [reqInitialType, setReqInitialType] = useState("UPGRADE");
   const [sortCol, setSortCol]           = useState(null);
   const [sortDir, setSortDir]           = useState("asc");
+
+  // Handle pending action from Dashboard (open Usage / Upgrade / Downgrade modal)
+  useEffect(() => {
+    if (!pendingLinkAction || !links.length) return;
+    const link = links.find(l => l.id === pendingLinkAction.linkId);
+    if (!link) return;
+    if (pendingLinkAction.action === "usage") {
+      setUtilModal(link);
+    } else if (pendingLinkAction.action === "upgrade") {
+      setReqInitialType("UPGRADE");
+      setReqModal(link);
+    } else if (pendingLinkAction.action === "downgrade") {
+      setReqInitialType("DOWNGRADE");
+      setReqModal(link);
+    }
+    clearPendingLinkAction?.();
+  }, [pendingLinkAction, links]);
 
   const hide = (col) => hiddenCols.includes(col);
   const aggPOPs = pops.filter(p => p.type?.toLowerCase() === "aggregation");
@@ -664,7 +819,7 @@ function LinksPage({ links, fetchLinks, pops, utils, fetchUtils, requests, fetch
         </div>
       )}
 
-      {reqModal && <RequestModal link={reqModal} user={user} onClose={()=>setReqModal(null)} onSave={async (payload)=>{ await API.post("/requests/", payload); fetchRequests(); setReqModal(null); }} />}
+      {reqModal && <RequestModal link={reqModal} user={user} initialType={reqInitialType} onClose={()=>setReqModal(null)} onSave={async (payload)=>{ await API.post("/requests/", payload); fetchRequests(); setReqModal(null); }} />}
 
       {utilModal && <UtilModal link={utilModal} onClose={()=>setUtilModal(null)} onSave={async (mbps, by, periodFrom, periodTo) => {
         await API.post("/utilization/", {
@@ -714,8 +869,8 @@ function LinksPage({ links, fetchLinks, pops, utils, fetchUtils, requests, fetch
                   <td>{l.type?<span className="type-chip">{l.type}</span>:<span className="muted">—</span>}</td>
                   <td className="muted">{l.aggregation||"—"}</td>
                   <td className="bold">{l.to_location}</td>
-                  <td className="muted">{l.quantity_mbps?`${l.quantity_mbps} Mbps`:"—"}</td>
-                  {!hide("vlan") && <td className="muted">{l.vlan||"—"}</td>}
+                  <td className="bold">{l.quantity_mbps?`${l.quantity_mbps} Mbps`:"—"}</td>
+                  {!hide("vlan") && <td className="bold">{l.vlan||"—"}</td>}
                   {!hide("commissioning_date") && <td className="muted">{l.commissioning_date||"—"}</td>}
                   <td><Badge status={l.status}/></td>
                   <td className="muted notes-cell">{l.notes||"—"}</td>
@@ -751,10 +906,12 @@ function LinksPage({ links, fetchLinks, pops, utils, fetchUtils, requests, fetch
                       </div>
                     );
                   })()}</td>
-                  <td style={{display:"flex",gap:5,flexWrap:"wrap"}}>
-                    {can(role,"editLinks") && <button className="edit-btn" onClick={()=>{setEditingLink(l);setOriginalLink(l);setShowForm(false);}}>Edit</button>}
-                    {can(role,"usageUpdate") && <button className="util-btn" onClick={()=>setUtilModal(l)}>Usage Update</button>}
-                    {can(role,"changeReq") && <button className="req-btn" onClick={()=>{setReqModal(l);setShowForm(false);setEditingLink(null);}}>Change</button>}
+                  <td>
+                    <div className="action-cell">
+                      {can(role,"editLinks") && <button className="btn-act btn-act-edit" onClick={()=>{setEditingLink(l);setOriginalLink(l);setShowForm(false);}} title="Edit link details">Edit</button>}
+                      {can(role,"usageUpdate") && <button className="btn-act btn-act-usage" onClick={()=>setUtilModal(l)} title="Update usage data">Usage</button>}
+                      {can(role,"changeReq") && <button className="btn-act btn-act-capacity" onClick={()=>{setReqInitialType("UPGRADE");setReqModal(l);setShowForm(false);setEditingLink(null);}} title="Request capacity change">Capacity</button>}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -1629,8 +1786,8 @@ function PartnersPage({ partners, kams, fetchPartners }) {
 }
 
 // ─── Request Modal ────────────────────────────────────────────────
-function RequestModal({ link, user, onClose, onSave }) {
-  const [reqType,  setReqType]  = useState("UPGRADE");
+function RequestModal({ link, user, onClose, onSave, initialType }) {
+  const [reqType,  setReqType]  = useState(initialType || "UPGRADE");
   const [changeMbps, setChangeMbps] = useState("");
   const role = user?.role || "NOC";
   const [reqBy,    setReqBy]    = useState("");
@@ -2269,7 +2426,7 @@ body{font-family:'Plus Jakarta Sans',sans-serif;color:#1e293b;background:#f1f5f9
 
 /* ── Sidebar ── */
 .sidebar{
-  width:220px;flex-shrink:0;background:#fff;border-right:1px solid #e2e8f0;
+  width:180px;flex-shrink:0;background:#fff;border-right:1px solid #e2e8f0;
   display:flex;flex-direction:column;height:100vh;
   transition:transform .25s ease;
   z-index:200;
@@ -2352,6 +2509,9 @@ body{font-family:'Plus Jakarta Sans',sans-serif;color:#1e293b;background:#f1f5f9
 
 /* ── Content ── */
 .content{flex:1;overflow-y:auto;padding:16px;}
+@media(max-width:600px){
+  .content{padding:10px;}
+}
 @media(min-width:769px){
   .content{padding:20px 24px;}
 }
@@ -2359,16 +2519,22 @@ body{font-family:'Plus Jakarta Sans',sans-serif;color:#1e293b;background:#f1f5f9
 /* ── Dashboard ── */
 .dash{display:flex;flex-direction:column;gap:16px;}
 .stat-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;}
-@media(max-width:640px){
-  .stat-row{grid-template-columns:repeat(2,1fr);}
+@media(max-width:900px){
+  .stat-row{grid-template-columns:repeat(2,1fr);gap:10px;}
 }
-.stat-card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:8px;transition:all .2s;}
-.stat-card:hover{border-color:#cbd5e1;box-shadow:0 3px 12px rgba(0,0,0,.06);}
-.stat-icon{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:15px;}
+@media(max-width:480px){
+  .stat-row{grid-template-columns:repeat(2,1fr);gap:8px;}
+}
+.stat-card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:6px;transition:all .15s;}
+.stat-btn{font-family:inherit;cursor:pointer;text-align:left;width:100%;}
+.stat-btn:hover{border-color:#cbd5e1;background:#fafbff;transform:translateY(-1px);box-shadow:0 2px 8px rgba(0,0,0,.04);}
+.stat-btn:active{transform:translateY(0);}
+.stat-top{display:flex;align-items:center;gap:8px;}
+.stat-icon-sm{width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;}
+.stat-bottom{display:flex;align-items:baseline;justify-content:space-between;gap:8px;}
 .stat-label{font-size:11px;color:#64748b;font-weight:500;}
-.stat-val{font-size:24px;font-weight:700;font-family:'IBM Plex Mono',monospace;line-height:1;}
-.stat-bar-row{display:flex;align-items:center;gap:6px;}
-.stat-bar{flex:1;height:3px;background:#f1f5f9;border-radius:2px;overflow:hidden;}
+.stat-val{font-size:22px;font-weight:700;font-family:'IBM Plex Mono',monospace;line-height:1;}
+.stat-bar{height:3px;background:#f1f5f9;border-radius:2px;overflow:hidden;}
 .stat-fill{height:100%;border-radius:2px;transition:width .7s ease;}
 .stat-pct{font-size:10px;font-weight:600;font-family:'IBM Plex Mono',monospace;white-space:nowrap;}
 .dash-bottom{display:grid;grid-template-columns:1fr 320px;gap:14px;}
@@ -2390,6 +2556,11 @@ body{font-family:'Plus Jakarta Sans',sans-serif;color:#1e293b;background:#f1f5f9
 .cap-empty{font-size:11px;color:#94a3b8;text-align:center;padding:8px;font-style:italic;}
 @media(max-width:900px){
   .dash-bottom{grid-template-columns:1fr;}
+  .dash-bottom-3col{grid-template-columns:1fr;flex:none;}
+  .map-card{min-height:340px;}
+  .recent-card,.attn-card,.capacity-card{min-height:auto;}
+  .attn-list{max-height:none;}
+  .cap-scroll{max-height:none;}
 }
 .map-card,.recent-card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;display:flex;flex-direction:column;overflow:hidden;}
 .map-card{min-height:300px;}
@@ -2410,6 +2581,61 @@ body{font-family:'Plus Jakarta Sans',sans-serif;color:#1e293b;background:#f1f5f9
 .recent-id{font-family:'IBM Plex Mono',monospace;font-size:12px;color:#4f46e5;font-weight:500;}
 .recent-loc{font-size:11.5px;color:#94a3b8;margin-top:1px;}
 .empty-msg{padding:32px;text-align:center;color:#94a3b8;font-size:13px;}
+
+/* ── Links Need Attention (card-based) ── */
+.attn-card{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:16px;display:flex;flex-direction:column;overflow:hidden;}
+.attn-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;flex-wrap:nowrap;}
+.attn-head-left{min-width:0;flex:1;}
+.attn-title{font-size:15px;font-weight:600;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.attn-sub{font-size:11px;color:#64748b;margin-top:2px;}
+.attn-viewall{font-size:11.5px;padding:5px 12px;border:1px solid #e2e8f0;background:#fff;border-radius:999px;cursor:pointer;color:#0f172a;font-family:inherit;white-space:nowrap;flex-shrink:0;}
+.attn-viewall:hover{background:#f8fafc;border-color:#cbd5e1;}
+
+.attn-stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px;}
+.attn-stat{border-radius:10px;padding:10px 11px;cursor:pointer;transition:transform .1s;border-left:4px solid transparent;outline:2px solid transparent;outline-offset:-1px;}
+.attn-stat:hover{transform:translateY(-1px);}
+.attn-stat-num{font-size:22px;font-weight:600;line-height:1;}
+.attn-stat-lbl{font-size:11px;margin-top:4px;font-weight:500;line-height:1.25;}
+
+.attn-stat-stale{background:#EEEDFE;border-left-color:#7F77DD;}
+.attn-num-stale{color:#26215C;}
+.attn-lbl-stale{color:#534AB7;}
+.attn-stat-stale.attn-stat-active{outline-color:rgba(127,119,221,.45);}
+
+.attn-stat-over{background:#FAECE7;border-left-color:#D85A30;}
+.attn-num-over{color:#4A1B0C;}
+.attn-lbl-over{color:#993C1D;}
+.attn-stat-over.attn-stat-active{outline-color:rgba(216,90,48,.45);}
+
+.attn-stat-under{background:#E1F5EE;border-left-color:#1D9E75;}
+.attn-num-under{color:#04342C;}
+.attn-lbl-under{color:#0F6E56;}
+.attn-stat-under.attn-stat-active{outline-color:rgba(29,158,117,.45);}
+
+.attn-list{display:flex;flex-direction:column;gap:6px;max-height:360px;overflow-y:auto;}
+.attn-empty{padding:22px;text-align:center;color:#94a3b8;font-size:12.5px;background:#f8fafc;border-radius:10px;}
+.attn-row{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;padding:10px 12px;background:#f8fafc;border-radius:10px;transition:background .1s;}
+.attn-row:hover{background:#f1f5f9;}
+.attn-row-info{min-width:0;flex:1;}
+.attn-row-route{font-size:12.5px;font-weight:600;color:#0f172a;line-height:1.35;word-break:break-word;}
+.attn-row-note{font-size:11px;color:#64748b;margin-top:2px;word-break:break-word;}
+.attn-row-status{display:flex;align-items:center;gap:6px;margin-top:5px;flex-wrap:wrap;}
+.attn-row-statustxt{font-size:10.5px;color:#64748b;}
+
+.attn-chip{font-size:10px;padding:1.5px 7px;border-radius:999px;font-weight:600;flex-shrink:0;}
+.attn-chip-stale{background:#EEEDFE;color:#534AB7;}
+.attn-chip-over{background:#FAECE7;color:#993C1D;}
+.attn-chip-under{background:#E1F5EE;color:#0F6E56;}
+
+.attn-row-btn{font-size:11.5px;padding:5px 12px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;cursor:pointer;color:#0f172a;flex-shrink:0;font-family:inherit;font-weight:500;align-self:flex-start;}
+.attn-row-btn:hover{border-color:#cbd5e1;background:#f8fafc;}
+
+@media(max-width:600px){
+  .attn-stats{grid-template-columns:1fr 1fr 1fr;gap:6px;}
+  .attn-stat{padding:8px 9px;}
+  .attn-stat-num{font-size:18px;}
+  .attn-stat-lbl{font-size:10px;}
+}
 
 /* ── Page ── */
 .page-col{display:flex;flex-direction:column;gap:14px;min-height:0;}
@@ -2455,23 +2681,20 @@ body{font-family:'Plus Jakarta Sans',sans-serif;color:#1e293b;background:#f1f5f9
 table{width:100%;border-collapse:collapse;font-size:12.5px;}
 thead{position:sticky;top:0;z-index:1;}
 thead tr{background:#f8fafc;border-bottom:1px solid #e2e8f0;}
-th{padding:9px 12px;text-align:left;font-size:10.5px;font-weight:600;color:#64748b;letter-spacing:.4px;text-transform:uppercase;white-space:nowrap;}
+th{padding:9px 10px;text-align:left;font-size:10px;font-weight:700;color:#475569;letter-spacing:.4px;text-transform:uppercase;white-space:nowrap;}
 .th-sort{cursor:pointer;user-select:none;}
-.th-sort:hover{color:#4f46e5;background:#f8fafc;}
-tbody tr{border-bottom:1px solid #f8fafc;transition:background .1s;}
+.th-sort:hover{color:#4f46e5;background:#f1f5f9;}
+tbody tr{border-bottom:1px solid #f1f5f9;transition:background .1s;}
 tbody tr:last-child{border-bottom:none;}
-tbody tr:hover{background:#fafbff;}
-td{padding:10px 12px;color:#475569;white-space:nowrap;}
-.num{color:#94a3b8;font-size:11px;font-family:'IBM Plex Mono',monospace;}
-.lid{font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#4f46e5;background:#eef2ff;padding:2px 7px;border-radius:4px;font-weight:500;}
-.muted{color:#94a3b8;font-size:12px;}
-.bold{color:#1e293b;font-weight:500;}
-.notes-cell{max-width:120px;overflow:hidden;text-overflow:ellipsis;}
-.type-chip{font-size:11px;font-weight:600;color:#0369a1;background:#e0f2fe;padding:2px 8px;border-radius:4px;}
-.edit-btn{padding:4px 10px;border-radius:6px;background:#fff;border:1px solid #e2e8f0;color:#64748b;font-size:11.5px;font-weight:500;cursor:pointer;transition:all .15s;font-family:'Plus Jakarta Sans',sans-serif;}
-.edit-btn:hover{border-color:#6366f1;color:#4f46e5;background:#eef2ff;}
-.del-btn{padding:4px 10px;border-radius:6px;background:#fff;border:1px solid #fecaca;color:#dc2626;font-size:11.5px;font-weight:500;cursor:pointer;transition:all .15s;font-family:'Plus Jakarta Sans',sans-serif;}
-.del-btn:hover{background:#fef2f2;}
+tbody tr:nth-child(even){background:#fcfcfd;}
+tbody tr:hover{background:#f5f7ff;}
+td{padding:9px 10px;color:#334155;white-space:nowrap;vertical-align:middle;}
+.num{color:#cbd5e1;font-size:11px;font-family:'IBM Plex Mono',monospace;font-weight:600;}
+.lid{font-family:'IBM Plex Mono',monospace;font-size:11px;color:#4f46e5;background:#eef2ff;padding:2px 7px;border-radius:5px;font-weight:600;}
+.muted{color:#64748b;font-size:12px;}
+.bold{color:#0f172a;font-weight:600;font-size:12.5px;}
+.notes-cell{max-width:110px;overflow:hidden;text-overflow:ellipsis;font-weight:500;color:#475569;}
+.type-chip{font-size:10px;font-weight:700;color:#0369a1;background:#e0f2fe;padding:2px 7px;border-radius:4px;letter-spacing:.3px;text-transform:uppercase;}
 .empty{padding:40px;text-align:center;color:#94a3b8;font-size:13px;}
 .tbl-foot{padding:10px 16px;border-top:1px solid #f1f5f9;font-size:11.5px;color:#94a3b8;text-align:right;flex-shrink:0;}
 
@@ -2484,7 +2707,25 @@ td{padding:10px 12px;color:#475569;white-space:nowrap;}
 .search-clear{position:absolute;right:8px;background:none;border:none;color:#94a3b8;cursor:pointer;font-size:11px;padding:2px;line-height:1;}
 .search-clear:hover{color:#475569;}
 
-/* ── Action buttons ── */
+/* ── Action buttons (new) ── */
+.action-cell{display:inline-flex;gap:4px;align-items:center;flex-wrap:nowrap;}
+.btn-act{padding:5px 9px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;white-space:nowrap;transition:all .12s;border:1px solid transparent;letter-spacing:.2px;}
+.btn-act:active{transform:translateY(1px);}
+
+.btn-act-edit{background:#eef2ff;border-color:#c7d2fe;color:#4338ca;}
+.btn-act-edit:hover{background:#6366f1;border-color:#6366f1;color:#fff;box-shadow:0 2px 6px rgba(99,102,241,.25);}
+
+.btn-act-usage{background:#ecfeff;border-color:#a5f3fc;color:#0e7490;}
+.btn-act-usage:hover{background:#06b6d4;border-color:#06b6d4;color:#fff;box-shadow:0 2px 6px rgba(6,182,212,.25);}
+
+.btn-act-capacity{background:#faf5ff;border-color:#e9d5ff;color:#7c3aed;}
+.btn-act-capacity:hover{background:#8b5cf6;border-color:#8b5cf6;color:#fff;box-shadow:0 2px 6px rgba(139,92,246,.25);}
+
+/* Legacy button classes kept for other pages */
+.edit-btn{padding:4px 10px;border-radius:6px;background:#fff;border:1px solid #e2e8f0;color:#64748b;font-size:11.5px;font-weight:500;cursor:pointer;transition:all .15s;font-family:'Plus Jakarta Sans',sans-serif;}
+.edit-btn:hover{border-color:#6366f1;color:#4f46e5;background:#eef2ff;}
+.del-btn{padding:4px 10px;border-radius:6px;background:#fff;border:1px solid #fecaca;color:#dc2626;font-size:11.5px;font-weight:500;cursor:pointer;transition:all .15s;font-family:'Plus Jakarta Sans',sans-serif;}
+.del-btn:hover{background:#fef2f2;}
 .util-btn{padding:4px 9px;border-radius:6px;background:#fff;border:1px solid #e0f2fe;color:#0369a1;font-size:11px;font-weight:600;cursor:pointer;transition:all .15s;font-family:'Plus Jakarta Sans',sans-serif;white-space:nowrap;}
 .util-btn:hover{background:#e0f2fe;border-color:#7dd3fc;}
 .req-btn{padding:4px 9px;border-radius:6px;background:#fff;border:1px solid #e2e8f0;color:#7c3aed;font-size:11px;font-weight:600;cursor:pointer;transition:all .15s;font-family:'Plus Jakarta Sans',sans-serif;white-space:nowrap;}
