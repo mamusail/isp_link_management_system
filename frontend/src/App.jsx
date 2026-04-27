@@ -9,13 +9,14 @@ const saveUser = (u) => u ? localStorage.setItem("isp_user", JSON.stringify(u)) 
 // ─── Role permissions ──────────────────────────────────────────────
 const CAN = {
   editLinks:      ["ADMIN","NOC"],
-  addLinks:       ["ADMIN","NOC"],
+  addLinks:       ["ADMIN"],
   changeReq:      ["ADMIN","NOC","PARTNER","KAM"],
   usageUpdate:    ["ADMIN","NOC"],
   billingApprove: ["ACCOUNTS","ADMIN"],
   adminConfirm:   ["ADMIN"],
   managePOPs:     ["ADMIN","NOC"],
   manageUsers:    ["ADMIN"],
+  exportData:     ["ADMIN"],
 };
 const can = (role, action) => CAN[action]?.includes(role) ?? false;
 
@@ -193,7 +194,7 @@ function MainApp({ user, onLogout }) {
           <div className="content">
             {page==="dashboard" && <Dashboard links={links} pops={pops} utils={utils} setPage={setPage} openLinkAction={openLinkAction} />}
             {page==="links"     && <LinksPage  links={links} fetchLinks={fetchLinks} pops={pops} utils={utils} fetchUtils={fetchUtils} requests={requests} fetchRequests={fetchRequests} partners={partners} user={user} role={role}  hiddenCols={HIDDEN_COLS[role]||[]} pendingLinkAction={pendingLinkAction} clearPendingLinkAction={()=>setPendingLinkAction(null)} />}
-            {page==="pops"      && can(role,"managePOPs") && <POPsPage pops={pops} fetchPops={fetchPops} />}
+            {page==="pops"      && can(role,"managePOPs") && <POPsPage pops={pops} fetchPops={fetchPops} role={role} />}
             {page==="requests"       && <RequestsPage requests={requests} links={links} fetchRequests={fetchRequests} fetchLinks={fetchLinks} user={user} />}
             {page==="users"          && can(role,"manageUsers") && <UsersPage />}
             {page==="kams"           && can(role,"manageUsers") && <KAMsPage kams={kams} fetchKams={fetchKams} />}
@@ -602,6 +603,9 @@ function POPMap({ pops }) {
 // ─── Links Page ───────────────────────────────────────────────────
 function LinksPage({ links, fetchLinks, pops, utils, fetchUtils, requests, fetchRequests, partners, user, role, hiddenCols=[], pendingLinkAction, clearPendingLinkAction }) {
   const [filter, setFilter]             = useState("ALL");
+  const [filterOwner, setFilterOwner]   = useState("ALL");
+  const [filterType, setFilterType]     = useState("ALL");
+  const [filterAgg, setFilterAgg]       = useState("ALL");
   const [showForm, setShowForm]         = useState(false);
   const [editingLink, setEditingLink]   = useState(null);
   const [originalLink, setOriginalLink] = useState(null);
@@ -666,13 +670,30 @@ function LinksPage({ links, fetchLinks, pops, utils, fetchUtils, requests, fetch
     } catch(err) { console.error(err); }
   };
 
+  // Build option lists. Type and Aggregation cascade based on selected Operator.
+  const operatorOptions = [...new Set(links.map(l => l.owner).filter(Boolean))].sort();
+  const linksForDeps = filterOwner === "ALL"
+    ? links
+    : links.filter(l => l.owner === filterOwner);
+  const typeOptions  = [...new Set(linksForDeps.map(l => l.type).filter(Boolean))].sort();
+  const aggOptions   = [...new Set(linksForDeps.map(l => l.aggregation).filter(Boolean))].sort();
+
+  // Auto-clear Type/Aggregation if they no longer match the selected Operator
+  useEffect(() => {
+    if (filterType !== "ALL" && !typeOptions.includes(filterType)) setFilterType("ALL");
+    if (filterAgg  !== "ALL" && !aggOptions.includes(filterAgg))   setFilterAgg("ALL");
+  }, [filterOwner, typeOptions.length, aggOptions.length]);
+
   const filtered = (() => {
     let rows = links.filter(l => {
       const matchFilter = filter==="ALL" || l.status?.toUpperCase()===filter;
+      const matchOwner  = filterOwner==="ALL" || l.owner === filterOwner;
+      const matchType   = filterType==="ALL"  || l.type  === filterType;
+      const matchAgg    = filterAgg==="ALL"   || l.aggregation === filterAgg;
       const q = search.toLowerCase().trim();
       const matchSearch = !q || [l.link_id,l.owner,l.type,l.aggregation,l.to_location,l.vlan,l.notes,l.status]
         .some(v => v && String(v).toLowerCase().includes(q));
-      return matchFilter && matchSearch;
+      return matchFilter && matchOwner && matchType && matchAgg && matchSearch;
     });
     if (sortCol) {
       rows = [...rows].sort((a, b) => {
@@ -717,13 +738,30 @@ function LinksPage({ links, fetchLinks, pops, utils, fetchUtils, requests, fetch
             <button key={f} className={`tab ${filter===f?"tab-on":""}`} onClick={()=>setFilter(f)}>{f}</button>
           ))}
         </div>
+        <div className="filter-row">
+          <select className="filter-sel" value={filterOwner} onChange={e=>setFilterOwner(e.target.value)}>
+            <option value="ALL">All Operators</option>
+            {operatorOptions.map(o => <option key={o} value={o}>{o}</option>)}
+          </select>
+          <select className="filter-sel" value={filterType} onChange={e=>setFilterType(e.target.value)}>
+            <option value="ALL">All Types</option>
+            {typeOptions.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+          <select className="filter-sel" value={filterAgg} onChange={e=>setFilterAgg(e.target.value)}>
+            <option value="ALL">All Aggregations</option>
+            {aggOptions.map(a => <option key={a} value={a}>{a}</option>)}
+          </select>
+          {(filterOwner!=="ALL"||filterType!=="ALL"||filterAgg!=="ALL") && (
+            <button className="filter-clear" onClick={()=>{setFilterOwner("ALL");setFilterType("ALL");setFilterAgg("ALL");}}>Clear filters</button>
+          )}
+        </div>
         <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
           <div className="search-wrap">
             <span className="search-icon">⌕</span>
             <input className="search-input" placeholder="Search links…" value={search} onChange={e=>setSearch(e.target.value)} />
             {search && <button className="search-clear" onClick={()=>setSearch("")}>✕</button>}
           </div>
-          <button className="btn-export" onClick={()=>setShowExport(true)}>↓ Export</button>
+          {can(role,"exportData") && <button className="btn-export" onClick={()=>setShowExport(true)}>↓ Export</button>}
           {can(role,"addLinks") && <button className="btn-add" onClick={()=>{setShowForm(!showForm);setEditingLink(null);}}>
             {showForm?"✕ Close":"+ Add Link"}
           </button>}
@@ -751,7 +789,7 @@ function LinksPage({ links, fetchLinks, pops, utils, fetchUtils, requests, fetch
           <div className="form-head"><b>Add New Link</b></div>
           <form onSubmit={handleSubmit}>
             <div className="fg fg-5">
-              <Sel label="Owner"  name="owner"  val={form.owner}  onChange={handleChange} opts={["AKN","BTL"]} />
+              <Sel label="Operator"  name="owner"  val={form.owner}  onChange={handleChange} opts={["AKN","BTL"]} />
               <F   label="Link ID" name="link_id" val={form.link_id} onChange={handleChange} placeholder="aknw_220523_001" required />
               <Sel label="Type"   name="type"   val={form.type}   onChange={handleChange} opts={["D2D","Long Haul","Metro"]} placeholderOpt="Select type…" />
               <div className="field">
@@ -783,7 +821,7 @@ function LinksPage({ links, fetchLinks, pops, utils, fetchUtils, requests, fetch
         <div className="form-box edit-box">
           <div className="form-head"><b>Edit Link</b> — <span className="edit-id">{editingLink.link_id}</span></div>
           <div className="fg fg-5">
-            <Sel label="Owner" val={editingLink.owner} onChange={e=>setEditingLink({...editingLink,owner:e.target.value})} opts={["AKN","BTL"]} />
+            <Sel label="Operator" val={editingLink.owner} onChange={e=>setEditingLink({...editingLink,owner:e.target.value})} opts={["AKN","BTL"]} />
             <div className="field"><label className="flabel">Link ID</label><input className="finput" value={editingLink.link_id} disabled /></div>
             <Sel label="Type" val={editingLink.type||""} onChange={e=>setEditingLink({...editingLink,type:e.target.value})} opts={["D2D","Long Haul","Metro"]} placeholderOpt="Select type…" />
             <div className="field">
@@ -821,7 +859,7 @@ function LinksPage({ links, fetchLinks, pops, utils, fetchUtils, requests, fetch
 
       {reqModal && <RequestModal link={reqModal} user={user} initialType={reqInitialType} onClose={()=>setReqModal(null)} onSave={async (payload)=>{ await API.post("/requests/", payload); fetchRequests(); setReqModal(null); }} />}
 
-      {utilModal && <UtilModal link={utilModal} onClose={()=>setUtilModal(null)} onSave={async (mbps, by, periodFrom, periodTo) => {
+      {utilModal && <UtilModal link={utilModal} user={user} onClose={()=>setUtilModal(null)} onSave={async (mbps, by, periodFrom, periodTo) => {
         await API.post("/utilization/", {
           link_id: utilModal.id,
           max_util_mbps: Number(mbps),
@@ -837,14 +875,21 @@ function LinksPage({ links, fetchLinks, pops, utils, fetchUtils, requests, fetch
       <div className="tbl-wrap">
         <div className="tbl-hd">
           <span className="tbl-title">Links <span className="tbl-cnt">{filtered.length}</span></span>
-          <span className="tbl-f">Filter: {filter}</span>
+          <span className="tbl-f">{(() => {
+            const parts = [];
+            if (filter !== "ALL") parts.push(filter);
+            if (filterOwner !== "ALL") parts.push(filterOwner);
+            if (filterType !== "ALL") parts.push(filterType);
+            if (filterAgg !== "ALL") parts.push(filterAgg);
+            return parts.length ? `Filter: ${parts.join(" · ")}` : "Filter: ALL";
+          })()}</span>
         </div>
         <div className="tbl-scroll">
           <table>
             <thead><tr>
               <th>#</th>
               {!hide("link_id") && <th className="th-sort" onClick={()=>handleSort("link_id")}>Link ID<SortIcon col="link_id"/></th>}
-              {!hide("owner")   && <th className="th-sort" onClick={()=>handleSort("owner")}>Owner<SortIcon col="owner"/></th>}
+              {!hide("owner")   && <th className="th-sort" onClick={()=>handleSort("owner")}>Operator<SortIcon col="owner"/></th>}
               <th className="th-sort" onClick={()=>handleSort("type")}>Type<SortIcon col="type"/></th>
               <th className="th-sort" onClick={()=>handleSort("aggregation")}>Aggregation<SortIcon col="aggregation"/></th>
               <th className="th-sort" onClick={()=>handleSort("to_location")}>To Location<SortIcon col="to_location"/></th>
@@ -925,7 +970,7 @@ function LinksPage({ links, fetchLinks, pops, utils, fetchUtils, requests, fetch
 }
 
 // ─── POPs Page ────────────────────────────────────────────────────
-function POPsPage({ pops, fetchPops }) {
+function POPsPage({ pops, fetchPops, role }) {
   const [showForm, setShowForm]     = useState(false);
   const [editingPOP, setEditingPOP] = useState(null);
   const [form, setForm]             = useState(EMPTY_POP);
@@ -1022,7 +1067,7 @@ function POPsPage({ pops, fetchPops }) {
             <input className="search-input" placeholder="Search POPs…" value={search} onChange={e=>setSearch(e.target.value)} />
             {search && <button className="search-clear" onClick={()=>setSearch("")}>✕</button>}
           </div>
-          <button className="btn-export" onClick={()=>setShowExport(true)}>↓ Export</button>
+          {can(role,"exportData") && <button className="btn-export" onClick={()=>setShowExport(true)}>↓ Export</button>}
           <button className="btn-add" onClick={()=>{setShowForm(!showForm);setEditingPOP(null);}}>
             {showForm?"✕ Close":"+ Add POP"}
           </button>
@@ -1172,10 +1217,10 @@ function Badge({ status }) {
 }
 
 // ─── Utilization Update Modal ─────────────────────────────────────
-function UtilModal({ link, onClose, onSave }) {
+function UtilModal({ link, user, onClose, onSave }) {
   const [mbps,   setMbps]   = useState("");
-  const [by,     setBy]     = useState("NOC");
   const [saving, setSaving] = useState(false);
+  const by = user?.username || user?.role || "NOC";
 
   const today     = new Date();
   const sevenAgo  = new Date(today); sevenAgo.setDate(today.getDate() - 7);
@@ -1257,11 +1302,6 @@ function UtilModal({ link, onClose, onSave }) {
             <span style={{fontSize:11,color:"#94a3b8"}}>→</span>
             <span style={{fontSize:12,color:"#475569",fontFamily:"var(--font-mono)"}}>{periodTo}</span>
             <span style={{fontSize:10,color:"#94a3b8",marginLeft:"auto"}}>auto</span>
-          </div>
-
-          <div className="field">
-            <label className="flabel">Reported By</label>
-            <input className="finput" placeholder="e.g. Rahul, NOC Team" value={by} onChange={e=>setBy(e.target.value)} />
           </div>
         </div>
 
@@ -1790,7 +1830,7 @@ function RequestModal({ link, user, onClose, onSave, initialType }) {
   const [reqType,  setReqType]  = useState(initialType || "UPGRADE");
   const [changeMbps, setChangeMbps] = useState("");
   const role = user?.role || "NOC";
-  const [reqBy,    setReqBy]    = useState("");
+  const reqBy = user?.username || role;
   const [saving,   setSaving]   = useState(false);
 
   const current  = link.quantity_mbps || 0;
@@ -1807,7 +1847,6 @@ function RequestModal({ link, user, onClose, onSave, initialType }) {
   const color = typeColors[reqType];
 
   const handleSave = async () => {
-    if (!reqBy) return;
     if (reqType !== "TERMINATE" && !changeMbps) return;
     setSaving(true);
     await onSave({
@@ -1876,25 +1915,13 @@ function RequestModal({ link, user, onClose, onSave, initialType }) {
               <div style={{fontSize:12,fontWeight:600,color:"#dc2626"}}>⚠ This will set the link status to CANCELLED after admin confirmation.</div>
             </div>
           )}
-
-          <div className="field">
-            <label className="flabel">Submitted As</label>
-            <div className="finput" style={{background:"#f1f5f9",fontWeight:600,color:
-              role==="ADMIN"?"#4f46e5":role==="NOC"?"#16a34a":role==="KAM"?"#0891b2":role==="ACCOUNTS"?"#b45309":role==="PARTNER"?"#7c3aed":"#64748b"
-            }}>{role}</div>
-          </div>
-
-          <div className="field">
-            <label className="flabel">Your Name / Username</label>
-            <input className="finput" placeholder="e.g. Rahul, aknoc_01" value={reqBy} onChange={e=>setReqBy(e.target.value)} />
-          </div>
         </div>
 
         <div className="modal-foot">
           <button className="btn-discard" onClick={onClose}>Cancel</button>
           <button className="btn-save"
-            disabled={saving || !reqBy || (reqType!=="TERMINATE" && !changeMbps)}
-            style={{opacity:(!reqBy||(reqType!=="TERMINATE"&&!changeMbps))?0.5:1, background:color}}
+            disabled={saving || (reqType!=="TERMINATE" && !changeMbps)}
+            style={{opacity:((reqType!=="TERMINATE"&&!changeMbps))?0.5:1, background:color}}
             onClick={handleSave}>
             {saving ? "Submitting…" : `Submit ${reqType.charAt(0)+reqType.slice(1).toLowerCase()} Request`}
           </button>
@@ -2109,7 +2136,7 @@ function RequestsPage({ requests, links, fetchRequests, fetchLinks }) {
 // ─── Export Modal ─────────────────────────────────────────────────
 const LINK_COLS = [
   { key:"link_id",           label:"Link ID" },
-  { key:"owner",             label:"Owner" },
+  { key:"owner",             label:"Operator" },
   { key:"type",              label:"Type" },
   { key:"aggregation",       label:"Aggregation" },
   { key:"to_location",       label:"To Location" },
@@ -2645,6 +2672,14 @@ body{font-family:'Plus Jakarta Sans',sans-serif;color:#1e293b;background:#f1f5f9
 .tab{padding:5px 11px;border-radius:6px;border:none;font-size:12px;font-weight:500;cursor:pointer;background:transparent;color:#64748b;transition:all .15s;font-family:'Plus Jakarta Sans',sans-serif;}
 .tab:hover{color:#334155;}
 .tab-on{background:#fff!important;color:#4f46e5!important;font-weight:600!important;box-shadow:0 1px 4px rgba(0,0,0,.08);}
+
+/* ── Filter dropdowns ── */
+.filter-row{display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
+.filter-sel{padding:6px 28px 6px 10px;border-radius:7px;border:1px solid #e2e8f0;background:#fff url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' stroke='%2364748b' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>") no-repeat right 10px center;font-size:12px;color:#334155;font-family:'Plus Jakarta Sans',sans-serif;cursor:pointer;appearance:none;-webkit-appearance:none;-moz-appearance:none;outline:none;transition:all .15s;max-width:150px;}
+.filter-sel:hover{border-color:#cbd5e1;background-color:#f8fafc;}
+.filter-sel:focus{border-color:#6366f1;box-shadow:0 0 0 3px rgba(99,102,241,.1);}
+.filter-clear{padding:6px 10px;border-radius:7px;border:1px solid #fee2e2;background:#fef2f2;color:#dc2626;font-size:11.5px;font-weight:500;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;white-space:nowrap;transition:all .15s;}
+.filter-clear:hover{background:#fee2e2;border-color:#fca5a5;}
 .btn-add{padding:7px 14px;border-radius:8px;background:#6366f1;color:#fff;font-size:13px;font-weight:600;border:none;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;white-space:nowrap;}
 .btn-add:hover{background:#4f46e5;box-shadow:0 4px 12px rgba(99,102,241,.3);}
 
