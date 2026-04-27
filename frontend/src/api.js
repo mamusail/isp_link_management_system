@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const API = axios.create({
-  baseURL: "http://192.168.68.50:8000",
+  baseURL: import.meta.env.VITE_API_URL || "/api",
 });
 
 // Attach token to every request
