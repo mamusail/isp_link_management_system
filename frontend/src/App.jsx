@@ -2438,6 +2438,11 @@ const CSS = `
 *{box-sizing:border-box;margin:0;padding:0;}
 html,body,#root{height:100%;}
 body{font-family:'Plus Jakarta Sans',sans-serif;color:#1e293b;background:#f1f5f9;}
+.leaflet-pane,
+.leaflet-top,
+.leaflet-bottom,
+.leaflet-container{z-index:1!important;}
+.leaflet-control{z-index:2!important;}
 
 /* ── Layout ── */
 .layout{display:flex;height:100vh;overflow:hidden;position:relative;}

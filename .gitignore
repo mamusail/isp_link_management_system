@@ -1,3 +1,10 @@
 __pycache__/ 
 *.pyc 
 *.zip 
+.env
+backend/.env
+frontend/.env
+node_modules/
+dist/
+venv/
+__pycache__/
